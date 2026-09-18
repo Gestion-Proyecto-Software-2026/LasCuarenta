@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Cartas Online API
+  version: "0.1.0"
+  description: API REST del backend transaccional. Ver docs/analisis_funcional_app.md §5.
+servers:
+  - url: /api
+paths:
+  /auth/registro:
+    post:
+      summary: Crear una cuenta de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, nombre_visible]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                nombre_visible: { type: string }
+      responses:
+        "201": { description: Usuario creado }
+  /auth/login:
+    post:
+      summary: Iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: "Token de sesión (JWT) + datos del usuario" }
+  /salas:
+    get:
+      summary: Listar salas disponibles
+      parameters:
+        - name: juego
+          in: query
+          schema: { type: string, enum: [guinote, mus, tute] }
+      responses:
+        "200": { description: Lista de salas }
+    post:
+      summary: Crear una sala
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [juego]
+              properties:
+                juego: { type: string, enum: [guinote, mus, tute] }
+      responses:
+        "201": { description: "Sala creada, incluye servidor_direccion (host:puerto)" }
+  /salas/{id}/unirse:
+    post:
+      summary: Unirse a una sala existente
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Sala actualizada }
+  /salas/{id}/expulsar:
+    post:
+      summary: Expulsar a un jugador de una sala (solo el creador) — PBI-09
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                usuario_id: { type: string }
+      responses:
+        "200": { description: Jugador expulsado }
+  /usuarios/{id}/historial:
+    get:
+      summary: Historial de partidas de un usuario — PBI-06
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Lista de partidas jugadas }
+  /ranking:
+    get:
+      summary: Ranking de jugadores — PBI-07
+      parameters:
+        - name: juego
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Clasificación de jugadores }
+  /interno/partidas:
+    post:
+      summary: (Interno) Registrar el resultado de una partida terminada
+      description: Solo lo invoca el servidor de partida, nunca el cliente.
+      responses:
+        "201": { description: Resultado guardado }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

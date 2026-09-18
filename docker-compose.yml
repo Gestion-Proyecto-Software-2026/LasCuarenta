@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cartas
+      POSTGRES_PASSWORD: cartas_dev_password
+      POSTGRES_DB: cartas_online
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://cartas:cartas_dev_password@db:5432/cartas_online
+      JWT_SECRET: cambia_esto_en_produccion
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

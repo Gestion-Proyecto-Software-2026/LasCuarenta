@@ -1,0 +1,22 @@
+name: Godot CI
+
+on:
+  pull_request:
+    paths: ["game/**"]
+  push:
+    branches: [main]
+    paths: ["game/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+      # Requiere tener el addon GUT instalado en game/addons/gut
+      - name: Run GUT tests (headless)
+        working-directory: game
+        run: godot --headless --path . -s addons/gut/gut_cmdln.gd

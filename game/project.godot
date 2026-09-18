@@ -1,0 +1,14 @@
+; Engine configuration file.
+; Es mejor editarlo desde el editor de Godot y no a mano.
+
+config_version=5
+
+[application]
+
+config/name="Cartas Online"
+config/features=PackedStringArray("4.3", "Forward Plus")
+run/main_scene="res://client/main_client.tscn"
+
+[network]
+
+limits/debugger/max_chars_per_second=32768
