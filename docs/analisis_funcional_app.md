@@ -1,4 +1,5 @@
 # Análisis funcional — Cartas Online (Guiñote, Mus, Tute)
+
 ## Variante: aplicación nativa de escritorio (Windows/Linux)
 
 **Estado:** borrador vivo — actualizadlo cuando cambie una decisión, no lo dejéis desincronizado del código.
