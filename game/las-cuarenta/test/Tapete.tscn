@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://iqjltih46rns"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_42687"]
+size = Vector2(1044, 151)
+
+[node name="Tapete" type="Control" unique_id=1342162523]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="mano" type="Control" parent="." unique_id=203643328]
+layout_mode = 1
+anchor_top = 0.7006173
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -3.0517578e-05
+grow_horizontal = 2
+grow_vertical = 0
+metadata/_edit_use_anchors_ = true
+
+[node name="area_mano" type="Area2D" parent="mano" unique_id=1372650850]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="mano/area_mano" unique_id=631037354]
+position = Vector2(569, 108.5)
+shape = SubResource("RectangleShape2D_42687")
+
+[node name="mano_oponente" type="Control" parent="." unique_id=32622885]
+layout_mode = 1
+anchor_top = 0.009259306
+anchor_right = 1.0
+anchor_bottom = 0.30864197
+offset_top = -3.0517578e-05
+grow_horizontal = 2
+grow_vertical = 0
+metadata/_edit_use_anchors_ = true
