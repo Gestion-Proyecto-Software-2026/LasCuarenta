@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://dfjf4ul4mxkf6"]
+
+[ext_resource type="Script" uid="uid://j17vt0qkknah" path="res://test/hola_mundo.gd" id="1_0ula0"]
+[ext_resource type="Texture2D" uid="uid://mmf6dw7fwaar" path="res://data/imagenes_cartas/As_oros.png" id="2_eks61"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_42687"]
+size = Vector2(413, 694)
+
+[sub_resource type="LabelSettings" id="LabelSettings_42687"]
+font_size = 42
+font_color = Color(0.07015244, 0.07015244, 0.070152424, 1)
+
+[node name="HolaMundo" type="Node2D" unique_id=1114862849]
+script = ExtResource("1_0ula0")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1451397304]
+scale = Vector2(0.7200009, 0.7200009)
+texture = ExtResource("2_eks61")
+
+[node name="Area2D" type="Area2D" parent="Sprite2D" unique_id=311511811]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Sprite2D/Area2D" unique_id=544771861]
+position = Vector2(0.5, 1)
+shape = SubResource("RectangleShape2D_42687")
+
+[node name="Label" type="Label" parent="Sprite2D" unique_id=545374559]
+offset_left = -60.0
+offset_top = 160.0
+offset_right = 77.0
+offset_bottom = 218.0
+text = "estado"
+label_settings = SubResource("LabelSettings_42687")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1325038424]
+zoom = Vector2(0.9, 0.9)
+
+[connection signal="mouse_entered" from="Sprite2D/Area2D" to="." method="_on_area_2d_mouse_entered"]
+[connection signal="mouse_exited" from="Sprite2D/Area2D" to="." method="_on_area_2d_mouse_exited"]
