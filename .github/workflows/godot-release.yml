@@ -16,6 +16,10 @@ jobs:
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.7.2
+          # Godot estándar, sin .NET: el proyecto es solo GDScript.
+          use-dotnet: false
+          # Sin las plantillas de exportación, --export-release falla.
+          include-templates: true
       - name: Export Windows build
         working-directory: game
         run: godot --headless --export-release "Windows Desktop" ../build/cartas-online-windows.exe

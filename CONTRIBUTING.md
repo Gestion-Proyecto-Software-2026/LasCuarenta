@@ -23,6 +23,8 @@ pbi-06-historial
 
 Se crea desde `main` actualizado y se borra al fusionar su PR.
 
+Lo que no pertenece a ninguna PBI (mantenimiento, arreglos del CI o de la documentación, piezas comunes a varias PBI) va en su propia rama con un nombre que diga qué es, p. ej. `fix-backend-lockfile` o `chore-mantenimiento`, y sigue el mismo flujo de PR.
+
 ## 3. PBIs grandes (talla L/XL) se rompen en subtareas, no en una rama única
 
 PBI-03 (Guiñote) y PBI-04 (Mus) son XL. Mantenerlas en una sola rama hasta estar "completas" acumula semanas de deriva respecto a `main` y produce un PR imposible de revisar. En vez de eso, cada subtarea del Issue tiene su propia rama y su propio PR directo a `main`:
@@ -91,7 +93,7 @@ Checklist resumido de la Definición de Hecho (fuente completa: informe de la Pr
 - [ ] Tests automáticos (unitarios y de integración) pasan en CI.
 - [ ] Cobertura de tests de la lógica de juego ≥ 60%.
 - [ ] Documentación (`README`/`docs/`) actualizada si la PBI la afecta.
-- [ ] Backend formateado con Prettier.
+- [ ] Backend formateado con Prettier (`npm run format`; el CI lo comprueba).
 - [ ] GDScript sigue la [guía de estilo oficial de Godot](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html).
 - [ ] Funcionalidad probada en el entorno de pruebas.
 
