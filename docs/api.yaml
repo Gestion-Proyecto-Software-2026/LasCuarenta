@@ -100,6 +100,41 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: Clasificación de jugadores }
+  /interno/salas/{id}:
+    get:
+      summary: (Interno) Composición de una sala para el servidor de partida
+      description: Solo lo invoca el servidor de partida, con la cabecera X-Internal-Secret. Ver analisis_funcional_app.md §5 y §6.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Internal-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Sala y participantes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  juego: { type: string, enum: [guinote, mus, tute] }
+                  estado: { type: string, enum: [esperando, en_curso, finalizada] }
+                  capacidad: { type: integer }
+                  participantes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        usuario_id: { type: string, format: uuid }
+                        posicion: { type: integer, minimum: 0, maximum: 3 }
+                        equipo: { type: integer, nullable: true }
+        "401": { description: Falta la cabecera X-Internal-Secret o no coincide }
+        "404": { description: La sala no existe }
   /interno/partidas:
     post:
       summary: (Interno) Registrar el resultado de una partida terminada

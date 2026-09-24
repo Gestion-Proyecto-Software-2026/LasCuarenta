@@ -57,7 +57,7 @@ Correspondencia directa entre el árbol del repositorio y las tres piezas de §1
 
 Dentro de `backend/src/`, la estructura actual ya separa por capa: `routes/` (un fichero por recurso: `auth.js`, `lobby.js`, `historial.js`, `ranking.js`), `middleware/` (`auth.js` = verificación de JWT), `models/` (`db.js` = pool de conexión `pg`, único punto de acceso a PostgreSQL). `app.js` monta cada grupo de rutas bajo su prefijo (`/api/auth`, `/api/salas`, `/api/usuarios`, `/api/ranking`) y expone `/health`; `index.js` solo arranca el servidor HTTP.
 
-En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada headless: abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y registra conexiones/desconexiones. **Pendiente de implementar** (se reescribirán en PBI-03; lo que sigue es el diseño previsto): `main_server.gd` delegará las conexiones en `RoomManager`; `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala; `game_engine/interfaz_comun.gd` definirá la clase base `MotorDeJuego` que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
+En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada headless: abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y registra conexiones/desconexiones. `game_engine/motor_de_juego.gd` define la clase base abstracta `MotorDeJuego` (con `estado_partida.gd` y `resultado_jugada.gd`), que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7). **Pendiente de implementar** (PBI-03; lo que sigue es el diseño previsto): `main_server.gd` delegará las conexiones en `RoomManager`, y `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala.
 
 ---
 
@@ -67,7 +67,7 @@ En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada he
 |---|---|---|
 | Cliente | Godot 4.7, GDScript | Exportado a ejecutable Windows/Linux, no a Web |
 | Red cliente ↔ servidor de partida | `ENetMultiplayerPeer` sobre UDP | Sin TLS en este canal (ver §5) |
-| Servidor de partida | Godot 4.7 headless, GDScript | `godot --headless --path game res://server/main_server.tscn`, puerto 9000 (`-- --puerto=N` para cambiarlo) |
+| Servidor de partida | Godot 4.7 headless, GDScript | `godot --headless --path game res://server/main_server.tscn`, puerto 9000 (`-- --puerto=N` para cambiarlo). Leerá del entorno `JWT_SECRET`, `INTERNAL_API_SECRET` y `BACKEND_URL` |
 | Backend | Node.js + Express | `backend/src/app.js` |
 | Base de datos | PostgreSQL 16 | Extensión `pgcrypto` para `gen_random_uuid()` (`migrations/001_init.sql`) |
 | Autenticación | JWT (`jsonwebtoken`) + `bcrypt` para contraseñas | Verificado en `backend/src/middleware/auth.js` |
@@ -94,7 +94,8 @@ En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada he
 
 - **Cliente ↔ Backend (REST):** cifrado (HTTPS vía nginx), porque viajan credenciales de login. Autenticación por JWT en `Authorization: Bearer <token>` en todas las rutas salvo registro/login/listado de salas/ranking (ver `analisis_funcional_app.md` §5).
 - **Cliente ↔ Servidor de partida (ENet/UDP):** sin TLS — decisión de equipo, ya que es un juego por turnos y no hay credenciales viajando por ese canal (la identidad ya se valida en `unirse_partida` con el token obtenido del login).
-- **Servidor de partida ↔ Backend (HTTP interno):** ruta `POST /interno/partidas`, protegida por un secreto compartido servidor-a-servidor (no JWT de usuario) mandado en la cabecera `X-Internal-Secret`. Solo la invoca el servidor de partida, nunca el cliente. El secreto vive en la variable de entorno `INTERNAL_API_SECRET` (ya definida en `backend/.env.example` y `docker-compose.yml`); el servidor de partida debe leer el mismo valor de su propia configuración cuando se implemente esa llamada.
+- **Servidor de partida → Backend (HTTP interno):** rutas `GET /interno/salas/:id` (el servidor pide la composición de una sala la primera vez que alguien se une) y `POST /interno/partidas` (resultado final). La comunicación siempre va en ese sentido; el backend nunca llama al servidor de partida. Protegidas por un secreto compartido servidor-a-servidor (no JWT de usuario) mandado en la cabecera `X-Internal-Secret`. Solo las invoca el servidor de partida, nunca el cliente. El secreto vive en la variable de entorno `INTERNAL_API_SECRET` (ya definida en `backend/.env.example` y `docker-compose.yml`); el servidor de partida debe leer el mismo valor de su propia configuración cuando se implemente esa llamada.
+- **Tokens de usuario en el servidor de partida:** el servidor de partida verifica el JWT de `unirse_partida` por su cuenta, con el mismo `JWT_SECRET` que el backend. Por tanto `JWT_SECRET` es un secreto compartido entre los dos procesos, igual que `INTERNAL_API_SECRET`; si se filtra desde cualquiera de ellos hay que rotarlo en ambos.
 - **Contraseñas:** cifradas con `bcrypt` antes de guardarse (`usuarios.password_hash`).
 - El backend no confía en ningún dato de estado de partida que no venga de esa ruta interna — el backend no valida reglas de juego, solo persiste lo que le informa el servidor de partida.
 
