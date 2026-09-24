@@ -247,9 +247,12 @@ func _enviar_inicio(sala: SalaActiva, posicion: int) -> void:
 	}})
 
 
+## La vista del jugador más lo que puede hacer ahora mismo, para que el cliente
+## no tenga que conocer las reglas (nunca decide si una jugada es válida).
 func _enviar_estado(sala: SalaActiva, posicion: int) -> void:
-	_enviar(sala.peer_en_posicion[posicion], MensajesRed.ESTADO_PARTIDA,
-		sala.motor.vista_para_jugador(sala.estado, posicion))
+	var payload := sala.motor.vista_para_jugador(sala.estado, posicion)
+	payload["jugadas_validas"] = sala.motor.jugadas_validas(sala.estado, posicion)
+	_enviar(sala.peer_en_posicion[posicion], MensajesRed.ESTADO_PARTIDA, payload)
 
 
 func _sala_del_peer(peer_id: int) -> SalaActiva:

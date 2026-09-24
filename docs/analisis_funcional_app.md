@@ -135,12 +135,14 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | Mensaje | Payload | Cuándo |
 |---|---|---|
 | `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
-| `estado_partida` | snapshot filtrado (ver §7) | Tras cada acción válida |
+| `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` | Al finalizar |
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. |
 
 **Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
+
+**Jugadas válidas:** cada `estado_partida` incluye `jugadas_validas`, la lista de lo que ese jugador puede enviar en ese momento, con el mismo formato con que se envía (`{ tipo, ...payload }`). El cliente la usa para saber qué cartas o botones activar, sin conocer las reglas. Puede quedarse desfasada si otro jugador actúa a la vez; en ese caso el servidor responde `error` y el siguiente `estado_partida` trae la lista buena.
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 
@@ -262,8 +264,14 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
   - Tras las bazas 1 a 3, quien tenga el 7 de triunfo en la pareja que ganó la baza puede enviar `cambiar_siete` cuando quiera, aunque no sea su turno, hasta que se cierre la baza siguiente. La partida no se para.
   - Tras la 4ª baza, en el último robo, la pinta se la lleva un rival del ganador. Si alguien de la pareja ganadora tiene el 7 de triunfo, el robo **espera** a que decida (`cambiar_siete` o `no_cambiar_siete`); mientras tanto no se juega carta, aunque sí se puede cantar. `estado_partida` indica quién tiene que decidir en `esperando_cambio_siete` (o `-1`).
   - Con esto no hace falta la regla de "si la pinta le tocaría al compañero se pierde el derecho": en el último robo la pinta siempre va a un rival del ganador, y solo la pareja ganadora puede cambiar.
+- **Tanteo y fin (⚠️ interpretaciones pendientes de confirmar):**
+  - "Superar los 100" es tener 101 o más.
+  - El mínimo de 30 tantos solo de cartas (sin cantes ni diez últimas) se aplica al terminar las idas en los dos casos: si las dos parejas superan los 100 y también si solo una los supera. Una pareja por debajo de ese mínimo pierde, y gana la otra.
+  - La vuelta la reparte quien jugó la carta que ganó la última baza de las idas. Los cantes de la vuelta son una mano nueva: se puede volver a cantar un palo cantado en las idas.
+  - La vuelta termina en cuanto la pareja que acaba de ganar una baza, o que acaba de cantar tras ganarla, supera los 100 sumando idas y vuelta. En la vuelta no se aplica el mínimo de 30.
+  - Siempre termina antes de su 10ª baza: entre idas y vuelta se reparten al menos 260 tantos, así que alguna pareja supera los 100, y eso solo puede pasar al ganar una baza o al cantar tras ganarla, que es justo cuando se comprueba.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
-- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`), el arrastre (`pbi-03-fase-arrastre`) y los cantes con el Tute y el cambio del siete (`pbi-03-cantes`) están implementados. Falta el tanteo con las vueltas (`pbi-03-tanteo-y-fin-partida`). `calcular_resultado` ya separa `puntos_cartas` (con las diez últimas) de `puntos_cantes`, que es lo que necesita la regla de los 30 tantos sin cantes. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
+- **Estado:** el motor está completo (reparto, robo, arrastre, cantes, Tute, cambio del siete, tanteo y vuelta) y registrado en `MOTORES` de `main_server.gd` como `guinote`. `calcular_resultado` devuelve `{ equipo_ganador, puntos_por_equipo, motivo, manos }`: `motivo` es `tute`, `tantos` o `vuelta`, y `manos` desglosa las idas y, si la hubo, la vuelta en `cartas`, `cantes`, `diez_ultimas` y `total`.
 
 ---
 

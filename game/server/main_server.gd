@@ -15,9 +15,10 @@ const URL_BACKEND_POR_DEFECTO := "http://localhost:3000/api"
 const ESPERA_ANTES_DE_EXPULSAR_S := 1.0
 
 ## Juegos disponibles: nombre (como lo devuelve el backend) -> script del motor.
-## Cada PBI de juego añade aquí su línea, p. ej.
-## "guinote": preload("res://server/game_engine/guinote/motor_guinote.gd").
-const MOTORES := {}
+## Cada PBI de juego añade aquí su línea.
+const MOTORES := {
+	"guinote": preload("res://server/game_engine/guinote/motor_guinote.gd"),
+}
 
 var room_manager: RoomManager
 

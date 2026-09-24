@@ -105,7 +105,7 @@ func _motor(semilla: int) -> MotorGuinote:
 ## camino que nunca se queda sin jugada posible.
 func _partida_al_azar(motor: MotorGuinote, rng: RandomNumberGenerator) -> EstadoGuinote:
 	var e := motor.iniciar(4) as EstadoGuinote
-	for paso in 200:
+	for paso in 1000:
 		if motor.ha_terminado(e):
 			break
 		var actua := e.siete_pendiente if e.siete_pendiente != -1 else e.turno
@@ -119,22 +119,27 @@ func _partida_al_azar(motor: MotorGuinote, rng: RandomNumberGenerator) -> Estado
 	return e
 
 
-func test_partidas_completas_de_diez_bazas() -> void:
-	for semilla in 25:
+func test_partidas_completas_hasta_el_final() -> void:
+	var motivos := {}
+	for semilla in 40:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = semilla
 		var motor := _motor(semilla)
 		var e := _partida_al_azar(motor, rng)
 		assert_true(motor.ha_terminado(e), "semilla %d" % semilla)
-		if not e.tute.is_empty():
-			continue  # un Tute termina la partida antes de tiempo
-		assert_eq(e.bazas_jugadas, 10)
-		assert_eq(e.cartas_ganadas[0].size() + e.cartas_ganadas[1].size(), 40)
-		for mano: Array in e.manos:
-			assert_true(mano.is_empty())
-		var puntos: Array = motor.calcular_resultado(e)["puntos_cartas"]
-		assert_eq(puntos[0] + puntos[1], 130, "cartas + diez últimas (semilla %d)" % semilla)
-		assert_eq(motor.jugadas_validas(e, e.turno), [] as Array[Dictionary], "tras la última baza no se juega más")
+		var resultado := motor.calcular_resultado(e)
+		assert_has([0, 1], resultado["equipo_ganador"])
+		motivos[resultado["motivo"]] = true
+		for jugador in 4:
+			assert_eq(motor.jugadas_validas(e, jugador), [] as Array[Dictionary], "terminada, no se juega más")
+		if resultado["motivo"] == "tute" and resultado["manos"].size() == 1:
+			continue  # un Tute en las idas las corta antes de la 10ª baza
+		# Las idas se juegan enteras: 120 tantos de cartas + 10 de las diez últimas.
+		var idas: Dictionary = resultado["manos"][0]
+		assert_eq(idas["cartas"][0] + idas["cartas"][1], 120, "semilla %d" % semilla)
+		assert_eq(idas["diez_ultimas"][0] + idas["diez_ultimas"][1], 10, "semilla %d" % semilla)
+	assert_has(motivos, "tantos", "alguna partida termina en las idas")
+	assert_has(motivos, "vuelta", "alguna partida necesita vuelta")
 
 
 func test_en_arrastre_se_rechaza_una_carta_no_permitida() -> void:

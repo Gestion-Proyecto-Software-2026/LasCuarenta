@@ -12,7 +12,18 @@ enum Fase { ROBO, ARRASTRE }
 const BAZAS_CON_ROBO := 4
 const BAZAS_POR_PARTIDA := 10
 
+enum Mano { IDAS, VUELTA }
+
 var fase: Fase = Fase.ROBO
+## Las idas, y la vuelta si nadie superó los 100 en las idas (§8).
+var mano_actual: Mano = Mano.IDAS
+## Tanteo con que terminaron las idas, que se arrastra a la vuelta:
+## { cartas, cantes, diez_ultimas, total } (cada uno, [equipo 0, equipo 1]). {} durante las idas.
+var tanteo_idas: Dictionary = {}
+## Equipo que ha ganado la partida; -1 mientras se juega.
+var equipo_ganador: int = -1
+## Por qué terminó: "tute", "tantos" (al acabar las idas) o "vuelta".
+var motivo_fin: String = ""
 var dador: int = 0
 ## Quién tiene que jugar ahora.
 var turno: int = 0
@@ -32,7 +43,8 @@ var ultima_baza: Dictionary = {}
 ## Cartas ganadas por cada equipo (boca abajo), para el tanteo.
 var cartas_ganadas: Array = [[], []]
 var bazas_jugadas: int = 0
-## Cantes hechos, en orden: [{ "jugador_id": int, "palo": Carta.Palo, "puntos": int }].
+## Cantes hechos, en orden:
+## [{ "jugador_id": int, "palo": Carta.Palo, "puntos": int, "mano": Mano }].
 var cantes: Array[Dictionary] = []
 ## Valor de bazas_jugadas cuando cantó cada jugador por última vez (-1 si nunca):
 ## cada miembro de la pareja puede cantar una vez por baza ganada.
