@@ -192,17 +192,6 @@ func test_la_pinta_se_roba_la_ultima_y_empieza_el_arrastre() -> void:
 	assert_eq(_todas_las_cartas(e).size(), 40)
 
 
-func test_en_arrastre_todavia_no_hay_jugadas() -> void:
-	# Pendiente de pbi-03-fase-arrastre: hasta entonces el motor no deja jugar
-	# con reglas incorrectas.
-	var motor := _motor()
-	var e := motor.iniciar(4) as EstadoGuinote
-	for baza in 4:
-		e = _jugar_baza(motor, e)
-	assert_eq(motor.jugadas_validas(e, e.turno), [] as Array[Dictionary])
-	assert_false(motor.ha_terminado(e))
-
-
 # --- Vista del jugador ---
 
 func test_la_vista_no_ensena_manos_ajenas_ni_el_mazo() -> void:

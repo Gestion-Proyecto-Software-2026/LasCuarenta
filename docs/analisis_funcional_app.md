@@ -251,8 +251,11 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 - **Asientos y sentido de juego:** los asientos se numeran en el orden en que se juega (antihorario). "A la derecha" de `p` es `(p + 1) % 4` y "a la izquierda", `(p + 3) % 4`; las parejas quedan 0-2 contra 1-3, como en §7.
 - **Reparto:** el dador se sortea con el generador aleatorio del motor. No hay corte: con la baraja mezclada al azar no cambia nada.
 - **Robo automático:** al cerrarse cada una de las 4 primeras bazas, el servidor reparte la carta de cada jugador en el orden de robo (el ganador primero); nadie tiene que pedirla. La pinta la roba el último al que le toque en la 4ª baza.
+- **Arrastre, cómo se interpretan las obligaciones:** el texto de arriba deja dos puntos abiertos, y el motor los resuelve así (⚠️ pendiente de que el equipo lo confirme; si se decide otra cosa, solo cambia `cartas_permitidas_en_arrastre`):
+  - La regla 3 ("si ya hay un triunfo jugado, desaparece la obligación de montar") solo se aplica cuando el palo de salida **no** es triunfo, es decir, cuando alguien ha fallado. Si sale triunfo, hay que montar en triunfo como en cualquier otro palo; si no, al haber siempre un triunfo en la mesa (el de salida), nunca habría que montar en triunfo.
+  - No hay excepción por ir ganando el compañero. Hay que montar aunque la carta más alta sea suya, y para fallar solo cuentan los triunfos de los **rivales**: si solo ha fallado el compañero, hay que fallar igualmente, con cualquier triunfo.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
-- **Estado por subtareas:** el reparto y las bazas con robada están implementados (`pbi-03-reparto-y-robo`). Las obligaciones del arrastre, los cantes con el cambio del siete, y el tanteo con las vueltas llegan en `pbi-03-fase-arrastre`, `pbi-03-cantes` y `pbi-03-tanteo-y-fin-partida`. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
+- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`) y el arrastre (`pbi-03-fase-arrastre`) están implementados: las idas se juegan enteras, con sus 10 bazas. Los cantes con el cambio del siete, y el tanteo con las vueltas, llegan en `pbi-03-cantes` y `pbi-03-tanteo-y-fin-partida`. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
 
 ---
 

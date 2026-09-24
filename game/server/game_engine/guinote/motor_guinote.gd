@@ -2,12 +2,11 @@ class_name MotorGuinote
 extends MotorDeJuego
 ## Motor de reglas del Guiñote (analisis_funcional_app.md §8).
 ##
-## Implementado: reparto, triunfo, las 4 bazas "con robada" (juego libre) y el
-## robo tras cada baza. Pendiente en las otras subtareas de PBI-03:
-## obligaciones de la fase de arrastre (pbi-03-fase-arrastre), cantes y cambio
-## del siete (pbi-03-cantes) y tanteo completo con vueltas
-## (pbi-03-tanteo-y-fin-partida). Hasta entonces no se registra en MOTORES de
-## main_server.gd.
+## Implementado: reparto, triunfo, las 4 bazas "con robada" (juego libre), el
+## robo tras cada baza y las 6 bazas de arrastre con sus obligaciones.
+## Pendiente en las otras subtareas de PBI-03: cantes y cambio del siete
+## (pbi-03-cantes) y tanteo completo con vueltas (pbi-03-tanteo-y-fin-partida).
+## Hasta entonces no se registra en MOTORES de main_server.gd.
 
 const NUM_JUGADORES := 4
 const CARTAS_POR_TANDA := 3
@@ -54,13 +53,64 @@ func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary
 	var validas: Array[Dictionary] = []
 	if ha_terminado(e) or jugador_id != e.turno:
 		return validas
+	var permitidas: Array = e.manos[jugador_id]
 	if e.fase == EstadoGuinote.Fase.ARRASTRE:
-		# Las obligaciones de asistir/montar/fallar llegan en pbi-03-fase-arrastre.
-		return validas
-	# Fase de robo: cualquier carta de la mano, sin obligación de asistir.
-	for carta: Carta in e.manos[jugador_id]:
+		permitidas = cartas_permitidas_en_arrastre(e.manos[jugador_id], e.baza_actual, e.palo_triunfo, jugador_id)
+	# En la fase de robo, cualquier carta de la mano, sin obligación de asistir.
+	for carta: Carta in permitidas:
 		validas.append({"tipo": MensajesRed.JUGAR_CARTA, "carta_id": carta.id})
 	return validas
+
+
+## Cartas de [param mano] que [param jugador_id] puede jugar en una baza de
+## arrastre, según las obligaciones de §8, en este orden:
+## 1. Asistir al palo de salida y, si puede, montar (superar la más alta de
+##    ese palo ya jugada, la haya echado quien la haya echado).
+## 2. Si no tiene el palo de salida, fallar (jugar triunfo) si tiene triunfo:
+##    con cualquiera si ningún rival ha fallado, o con uno que supere al triunfo
+##    más alto de los rivales. Si no puede superarlo, juega libremente.
+## 3. Si el palo de salida no es triunfo y alguien ya ha fallado, basta con
+##    asistir, sin montar.
+## 4. En cualquier otro caso, juega libremente. Quien abre la baza, también.
+static func cartas_permitidas_en_arrastre(mano: Array, baza: Array[Dictionary],
+		palo_triunfo: Carta.Palo, jugador_id: int) -> Array:
+	if baza.is_empty():
+		return mano
+	var palo_salida: Carta.Palo = baza[0]["carta"].palo
+
+	var del_palo := mano.filter(func(c: Carta) -> bool: return c.palo == palo_salida)
+	if not del_palo.is_empty():
+		var alguien_ha_fallado := palo_salida != palo_triunfo 			and baza.any(func(j: Dictionary) -> bool: return j["carta"].palo == palo_triunfo)
+		if alguien_ha_fallado:
+			return del_palo
+		var mas_alta := _mas_alta(baza, func(j: Dictionary) -> bool: return j["carta"].palo == palo_salida)
+		return _las_que_superan(del_palo, mas_alta, del_palo)
+
+	var triunfos := mano.filter(func(c: Carta) -> bool: return c.palo == palo_triunfo)
+	if triunfos.is_empty():
+		return mano
+	var triunfo_rival := _mas_alta(baza, func(j: Dictionary) -> bool:
+		return j["carta"].palo == palo_triunfo and equipo_de(j["jugador_id"]) != equipo_de(jugador_id))
+	if triunfo_rival == null:
+		return triunfos
+	return _las_que_superan(triunfos, triunfo_rival, mano)
+
+
+## La carta más fuerte de las jugadas de [param baza] que cumplen [param filtro],
+## o null si ninguna lo cumple. Todas las que cumplen el filtro son del mismo palo.
+static func _mas_alta(baza: Array[Dictionary], filtro: Callable) -> Carta:
+	var mejor: Carta = null
+	for jugada: Dictionary in baza.filter(filtro):
+		if mejor == null or fuerza(jugada["carta"]) > fuerza(mejor):
+			mejor = jugada["carta"]
+	return mejor
+
+
+## Las cartas de [param candidatas] que superan a [param rival]; si ninguna la
+## supera, [param si_ninguna].
+static func _las_que_superan(candidatas: Array, rival: Carta, si_ninguna: Array) -> Array:
+	var superan := candidatas.filter(func(c: Carta) -> bool: return fuerza(c) > fuerza(rival))
+	return superan if not superan.is_empty() else si_ninguna
 
 
 func _ejecutar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> void:
