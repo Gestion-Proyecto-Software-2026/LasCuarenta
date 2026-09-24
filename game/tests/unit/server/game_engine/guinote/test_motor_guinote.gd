@@ -18,12 +18,15 @@ func _baza(ids: Array[String], primero := 0) -> Array[Dictionary]:
 
 
 ## Juega una baza completa: cada jugador, en su turno, su primera carta válida.
+## Si al cerrarla hay que decidir el cambio del siete, no se cambia.
 func _jugar_baza(motor: MotorGuinote, estado: EstadoGuinote) -> EstadoGuinote:
 	for i in 4:
 		var jugada: Dictionary = motor.jugadas_validas(estado, estado.turno)[0]
 		var resultado := motor.aplicar_jugada(estado, estado.turno, jugada)
 		assert_true(resultado.ok, resultado.error)
 		estado = resultado.estado
+	if estado.siete_pendiente != -1:
+		estado = motor.aplicar_jugada(estado, estado.siete_pendiente, {"tipo": "no_cambiar_siete"}).estado
 	return estado
 
 
