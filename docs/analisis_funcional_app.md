@@ -90,7 +90,7 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 | POST | `/salas/:id/unirse` | — | `200 { sala actualizada }` |
 | POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200` — solo el creador puede invocarlo |
 
-`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa.
+`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
 ### Historial y ranking (PBI-06, PBI-07)
 | Método | Ruta | Respuesta |
@@ -101,7 +101,10 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 ### Interno (solo lo llama el servidor de partida, con secreto compartido servidor-a-servidor, nunca el cliente)
 | Método | Ruta | Cabecera | Body |
 |---|---|---|---|
+| GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
 | POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, resultado: { equipos: [...], puntos: [...] } }` |
+
+`GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo }] }` o `404` si la sala no existe. La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
 El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X-Internal-Secret` no coincida con la variable de entorno `INTERNAL_API_SECRET` (definida en `backend/.env.example` y en `docker-compose.yml`). El servidor de partida debe leer el mismo valor de su propia configuración — no es JWT de usuario, es un secreto fijo compartido entre los dos procesos.
 
@@ -115,7 +118,7 @@ Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, 
 
 | Mensaje | Payload | Cuándo |
 |---|---|---|
-| `unirse_partida` | `{ usuario_id, token }` | Al conectar por ENet |
+| `unirse_partida` | `{ usuario_id, token, sala_id }` | Al conectar por ENet |
 | `jugar_carta` | `{ carta_id }` | Turno del jugador |
 | `cantar` | `{ palo }` | Guiñote/Tute, tras ganar baza |
 | `mus` / `no_mus` | — | Fase de decisión en Mus |
@@ -132,6 +135,8 @@ Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, 
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. |
 
+**Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
+
 **Identificador de carta (`carta_id`):** `"<palo>_<valor>"` en minúsculas, con palo `oros|copas|espadas|bastos` y valor `1`–`7`, `10` (sota), `11` (caballo) o `12` (rey). Ejemplos: `"oros_1"`, `"espadas_12"`. Lo genera y valida `Carta` (`game/shared/carta.gd`); un id que no corresponde a ninguna carta se rechaza con `error`.
 
 **Regla importante:** el servidor nunca envía a un cliente las cartas en mano de otro jugador. El snapshot se filtra por destinatario antes de enviarse (ver `vista_para_jugador` en §7).
@@ -142,28 +147,43 @@ Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, 
 
 Contrato que debe implementar cada módulo de juego (`guinote/`, `mus/`, `tute/`) dentro de `game/server/game_engine/`. Es el punto más importante de todo el documento: si esto queda mal diseñado pensando solo en Guiñote, Mus y Tute cuestan mucho más de lo necesario.
 
+Implementado en `game/server/game_engine/motor_de_juego.gd` (clase abstracta), junto con `estado_partida.gd` y `resultado_jugada.gd`:
+
 ```gdscript
-# Contrato que debe cumplir cada módulo de juego
-class_name MotorDeJuego
+@abstract class_name MotorDeJuego
 
-func iniciar(jugadores: Array) -> EstadoPartida:
-    pass  # reparte cartas, decide quién empieza, etc.
+func _init(p_rng: RandomNumberGenerator = null)  # null = semilla aleatoria; los tests pasan una fija
 
-func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array:
-    pass  # qué puede hacer este jugador ahora mismo
+@abstract func jugadores_admitidos() -> Array[int]  # p. ej. [4], o [2, 4] en Mus
 
-func aplicar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> EstadoPartida:
-    pass  # valida y aplica; si no es válida, error, no excepción silenciosa
+func iniciar(num_jugadores: int) -> EstadoPartida
+    # comprueba num_jugadores y llama a _iniciar(): repartir, decidir quién empieza, etc.
 
-func ha_terminado(estado: EstadoPartida) -> bool:
-    pass
+@abstract func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary]
+    # lo que este jugador puede hacer ahora mismo ([] si nada)
 
-func calcular_resultado(estado: EstadoPartida) -> Dictionary:
-    pass  # puntos finales por equipo/jugador
+func aplicar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> ResultadoJugada
+    # valida y aplica sobre una copia; si no es válida devuelve ok = false con el motivo
 
-func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
-    pass  # oculta las cartas de los demás antes de enviar al cliente
+@abstract func ha_terminado(estado: EstadoPartida) -> bool
+
+@abstract func calcular_resultado(estado: EstadoPartida) -> Dictionary
+    # { equipo_ganador: int, puntos_por_equipo: Array[int] } + lo que cada juego quiera añadir
+
+@abstract func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary
+    # oculta las cartas de los demás antes de enviar al cliente
 ```
+
+Cada juego hereda de `MotorDeJuego` e implementa además `_iniciar(num_jugadores)` y `_ejecutar_jugada(estado, jugador_id, jugada)`, y define su propio estado heredando de `EstadoPartida` (p. ej. `EstadoGuinote`).
+
+**Decisiones del contrato:**
+- **`jugador_id` es la posición en la mesa** (`0` … `num_jugadores - 1`), la misma que `sala_participantes.posicion`. El motor no sabe nada de usuarios ni de conexiones: `RoomManager` traduce `usuario_id` ↔ posición ↔ peer de ENet.
+- **Equipos por posición:** `MotorDeJuego.equipo_de(jugador_id)` = `jugador_id % 2`, así que en las mesas de 4 las parejas son 0-2 contra 1-3 (§8, §10), y en Mus a 2 cada jugador es su propio equipo. En Mus, el sorteo de parejas (§9) lo resuelve quien asigna los asientos, no el motor.
+- **Formato de una jugada:** `{ tipo, ...payload }` con los nombres de los mensajes de §6. Por ejemplo, `{ tipo: "jugar_carta", carta_id: "oros_1" }` o `{ tipo: "cantar", palo: "copas" }`. `RoomManager` convierte el mensaje de red a este formato.
+- **La validación la hace la clase base, no cada juego:** `aplicar_jugada` rechaza la jugada si la partida ha terminado o si no está exactamente en `jugadas_validas(...)` (un campo de más o de menos también la invalida), así ningún juego puede olvidarse de validar. Un juego con jugadas imposibles de enumerar puede sobrescribir `_validar()`.
+- **No hay turno genérico:** hay jugadas fuera de turno (cantes en Guiñote, decisiones de Mus), así que cada juego expresa el turno a través de `jugadas_validas`.
+- **Errores sin excepciones:** GDScript no las tiene. Una jugada inválida devuelve `ResultadoJugada` con `ok = false` y un `error` legible, que el servidor reenvía tal cual en el mensaje `error` de §6. El `estado` recibido nunca se modifica: el motor trabaja sobre `estado.duplicar()`.
+- **Aleatoriedad inyectada:** el reparto usa el `RandomNumberGenerator` del motor, así una partida con la misma semilla es reproducible en los tests.
 
 `RoomManager` (en `game/server/room_manager.gd`) no conoce las reglas de ningún juego concreto — solo sabe hablar contra esta interfaz. Añadir un juego nuevo no debería tocar ni una línea de `room_manager.gd`.
 
@@ -334,8 +354,8 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 
 1. El usuario abre la aplicación (cliente Godot instalado) y hace login → `POST /auth/login` contra el backend.
 2. Ve el lobby → `GET /salas`. Crea o se une a una → `POST /salas` o `POST /salas/:id/unirse`.
-3. Cuando la sala se completa, el backend le da la dirección (`host:puerto`) del servidor de partida.
-4. El cliente conecta por ENet y envía `unirse_partida`.
+3. Cuando la sala se completa, el backend le da la dirección (`host:puerto`) del servidor de partida (`GAME_SERVER_ADDRESS`).
+4. El cliente conecta por ENet y envía `unirse_partida { usuario_id, token, sala_id }`. El servidor verifica el token y pide la sala al backend (`GET /interno/salas/:id`).
 5. El servidor de partida inicia la partida usando el motor genérico (§7) + el módulo del juego correspondiente, y empieza a intercambiar `jugar_carta` / `estado_partida`.
 6. Al terminar, el servidor de partida llama a `POST /interno/partidas` para persistir el resultado.
 7. El cliente recibe `partida_terminada` y puede volver al lobby o consultar el historial (`GET /usuarios/:id/historial`).
