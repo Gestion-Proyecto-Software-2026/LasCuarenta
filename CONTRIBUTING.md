@@ -77,8 +77,11 @@ Estas ramas se actualizan si el desglose real de un PBI cambia durante el groomi
 - Las rutas que tocan PostgreSQL necesitan una base de datos de test. Recomendado: la misma `db` de `docker-compose.yml`, pero con una base separada (`cartas_online_test`) para no mezclar datos con desarrollo — no compartáis la `cartas_online` de trabajo diario.
 - La Definición de Hecho exige que estos tests **pasen** en CI; el 60% de cobertura mínima aplica solo a la lógica de juego, no al backend.
 
-**Juego (GUT) — bloqueado por ahora:**
-- No se puede fijar la convención todavía porque `game/project.godot` no existe en `main` (ver el hueco abierto sobre `game/las-cuarenta/`). En cuanto se resuelva, queda pendiente decidir la carpeta que GUT barre (normalmente vía `.gutconfig.json` apuntando a `game/tests/`) antes de escribir el primer test de lógica de juego.
+**Juego (GUT):**
+- GUT barre `game/tests/` y sus subcarpetas (configurado en `game/.gutconfig.json`). Solo se ejecutan los ficheros `test_*.gd` que extienden `GutTest`.
+- Tests unitarios de `shared/` y `server/game_engine/` en `game/tests/unit/`, reflejando la ruta del script probado (p. ej. `server/game_engine/guinote/motor_guinote.gd` → `tests/unit/game_engine/guinote/test_motor_guinote.gd`). Los que necesitan varias piezas a la vez (`RoomManager` + un motor) van en `game/tests/integration/`.
+- El 60% de cobertura mínima aplica a la lógica de juego (`shared/` + `server/game_engine/`), no al cliente.
+- En local, igual que en CI (Godot 4.7.2): `godot --headless --path game -s addons/gut/gut_cmdln.gd`. `tests/test_smoke.gd` solo comprueba que el proyecto carga y se puede borrar cuando haya tests reales.
 
 ## 6. Antes de abrir un PR
 

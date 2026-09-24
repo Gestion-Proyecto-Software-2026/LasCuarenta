@@ -23,7 +23,7 @@ Proyecto de la asignatura Gestión de Proyectos Software.
 1. Copiar `backend/.env.example` a `backend/.env` y ajustar valores.
 2. `docker compose up -d` — levanta backend + PostgreSQL.
 3. Ejecutar `backend/migrations/001_init.sql` contra la base de datos.
-4. Abrir `game/project.godot` en el editor de Godot 4.3+.
+4. Abrir `game/project.godot` en el editor de Godot 4.7.
 
 ## Reglas no negociables (ver `docs/analisis_funcional_app.md` §2)
 - GDScript, no C#.

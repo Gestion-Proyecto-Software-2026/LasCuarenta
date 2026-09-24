@@ -1,0 +1,16 @@
+# Normaliza finales de línea a LF en el repo y en el checkout, igual que
+# escribe Godot, para evitar diffs de ruido entre Windows y Linux.
+* text=auto eol=lf
+
+# Binarios (evita que git intente normalizarlos)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.svg text
+*.ttf binary
+*.otf binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.zip binary

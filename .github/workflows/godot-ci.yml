@@ -15,7 +15,7 @@ jobs:
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
         with:
-          version: 4.3.0
+          version: 4.7.2
       # Requiere tener el addon GUT instalado en game/addons/gut
       - name: Run GUT tests (headless)
         working-directory: game

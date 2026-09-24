@@ -57,7 +57,7 @@ Correspondencia directa entre el árbol del repositorio y las tres piezas de §1
 
 Dentro de `backend/src/`, la estructura actual ya separa por capa: `routes/` (un fichero por recurso: `auth.js`, `lobby.js`, `historial.js`, `ranking.js`), `middleware/` (`auth.js` = verificación de JWT), `models/` (`db.js` = pool de conexión `pg`, único punto de acceso a PostgreSQL). `app.js` monta cada grupo de rutas bajo su prefijo (`/api/auth`, `/api/salas`, `/api/usuarios`, `/api/ranking`) y expone `/health`; `index.js` solo arranca el servidor HTTP.
 
-En `game/server/`, `main_server.gd` es el punto de entrada headless (abre el `ENetMultiplayerPeer` en el puerto 9000 y delega las conexiones/desconexiones en `RoomManager`); `room_manager.gd` mantiene el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y es el único punto que conoce qué módulo de juego corresponde a cada sala; `game_engine/interfaz_comun.gd` define la clase base `MotorDeJuego` que implementan `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
+En `game/server/` (**pendiente de implementar**: estos ficheros se retiraron del repo en septiembre de 2026 y se reescribirán en el primer PBI de juego; lo que sigue es el diseño previsto), `main_server.gd` será el punto de entrada headless (abrirá el `ENetMultiplayerPeer` en el puerto 9000 y delegará las conexiones/desconexiones en `RoomManager`); `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala; `game_engine/interfaz_comun.gd` definirá la clase base `MotorDeJuego` que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
 
 ---
 
