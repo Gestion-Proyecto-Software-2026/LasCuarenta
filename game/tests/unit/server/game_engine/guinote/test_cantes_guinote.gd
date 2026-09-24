@@ -91,7 +91,7 @@ func test_las_cuarenta_en_triunfo_y_veinte_en_otro_palo() -> void:
 	assert_eq(e.cantes[0]["puntos"], 40)
 	e = _aplicar(_estado(MANOS, 0), 0, CANTE_COPAS)
 	assert_eq(e.cantes[0]["puntos"], 20)
-	assert_eq(motor.calcular_resultado(e)["puntos_cantes"], [20, 0])
+	assert_eq(motor.calcular_resultado(e)["manos"][0]["cantes"], [20, 0])
 
 
 func test_un_cante_por_miembro_y_por_baza_ganada() -> void:
@@ -147,5 +147,5 @@ func test_tute_de_sotas_solo_si_su_pareja_gano_la_baza() -> void:
 func test_la_vista_muestra_los_cantes_a_todos() -> void:
 	var e := _aplicar(_estado(MANOS, 0), 0, CANTE_COPAS)
 	var vista := motor.vista_para_jugador(e, 1)
-	assert_eq(vista["cantes"], [{"jugador_id": 0, "palo": "copas", "puntos": 20}])
+	assert_eq(vista["cantes"], [{"jugador_id": 0, "palo": "copas", "puntos": 20, "mano": "idas"}])
 	assert_eq(vista["tute"], {})

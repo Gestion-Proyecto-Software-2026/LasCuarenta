@@ -4,9 +4,8 @@ extends MotorDeJuego
 ##
 ## Implementado: reparto, triunfo, las 4 bazas "con robada" (juego libre), el
 ## robo tras cada baza, las 6 bazas de arrastre con sus obligaciones, los
-## cantes (20 y las 40), el Tute y el cambio del siete. Pendiente: tanteo
-## completo con vueltas (pbi-03-tanteo-y-fin-partida). Hasta entonces no se
-## registra en MOTORES de main_server.gd.
+## cantes (20 y las 40), el Tute, el cambio del siete, el tanteo de las idas
+## y la vuelta. Es el motor completo de §8.
 
 const NUM_JUGADORES := 4
 const CARTAS_POR_TANDA := 3
@@ -25,6 +24,11 @@ const SOTA := 10
 const REY := 12
 ## Figuras con las que se canta Tute en Guiñote (en el Tute son caballos o reyes).
 const FIGURAS_TUTE := {"sotas": SOTA, "reyes": REY}
+## Hay que superar esta cifra (101 o más) para ganar por tantos.
+const TANTOS_PARA_GANAR := 100
+## Mínimo de tantos solo por valor de cartas (sin cantes ni diez últimas) para
+## poder ganar por tantos al terminar las idas.
+const MINIMO_TANTOS_DE_CARTAS := 30
 
 
 func jugadores_admitidos() -> Array[int]:
@@ -37,22 +41,36 @@ func jugadores_admitidos() -> Array[int]:
 func _iniciar(_num_jugadores: int) -> EstadoPartida:
 	var estado := EstadoGuinote.new()
 	estado.dador = rng.randi_range(0, NUM_JUGADORES - 1)
+	_repartir(estado)
+	return estado
+
+
+## Baraja y reparte para una mano nueva (las idas o la vuelta) con el dador ya
+## decidido. Deja la mesa limpia: sin bazas, cantes pendientes ni pinta cambiada.
+func _repartir(e: EstadoGuinote) -> void:
 	var cartas := Baraja.crear()
 	Baraja.barajar(cartas, rng)
 
+	e.manos = []
 	for jugador in NUM_JUGADORES:
-		estado.manos.append([] as Array[Carta])
+		e.manos.append([] as Array[Carta])
 	for tanda in TANDAS_DE_REPARTO:
 		for i in NUM_JUGADORES:
-			var jugador := (estado.dador + 1 + i) % NUM_JUGADORES
+			var jugador := (e.dador + 1 + i) % NUM_JUGADORES
 			for c in CARTAS_POR_TANDA:
-				estado.manos[jugador].append(cartas.pop_front())
+				e.manos[jugador].append(cartas.pop_front())
 
-	estado.pinta = cartas.pop_front()
-	estado.palo_triunfo = estado.pinta.palo
-	estado.mazo = cartas
-	estado.turno = (estado.dador + 1) % NUM_JUGADORES
-	return estado
+	e.pinta = cartas.pop_front()
+	e.palo_triunfo = e.pinta.palo
+	e.mazo = cartas
+	e.turno = (e.dador + 1) % NUM_JUGADORES
+	e.fase = EstadoGuinote.Fase.ROBO
+	e.baza_actual = []
+	e.ultima_baza = {}
+	e.cartas_ganadas = [[], []]
+	e.bazas_jugadas = 0
+	e.ultimo_cante_de = [-1, -1, -1, -1]
+	e.siete_pendiente = -1
 
 
 func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary]:
@@ -101,7 +119,9 @@ func _cantes_posibles(e: EstadoGuinote, jugador_id: int) -> Array[Dictionary]:
 		return cantes
 	var mano: Array = e.manos[jugador_id]
 	if e.ultimo_cante_de[jugador_id] != e.bazas_jugadas:
-		var cantados := e.cantes.map(func(c: Dictionary) -> Carta.Palo: return c["palo"])
+		# Cada palo se canta una vez por mano: en la vuelta se puede volver a cantar.
+		var cantados := e.cantes.filter(func(c: Dictionary) -> bool: return c["mano"] == e.mano_actual) \
+			.map(func(c: Dictionary) -> Carta.Palo: return c["palo"])
 		for palo: Carta.Palo in Carta.Palo.values():
 			if palo not in cantados and _tiene(mano, palo, SOTA) and _tiene(mano, palo, REY):
 				cantes.append({"tipo": MensajesRed.CANTAR, "palo": nombre_palo(palo)})
@@ -187,10 +207,12 @@ func _ejecutar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary
 		MensajesRed.CANTAR:
 			var palo := Carta.Palo.keys().find((jugada["palo"] as String).to_upper()) as Carta.Palo
 			var puntos := PUNTOS_CANTE_TRIUNFO if palo == e.palo_triunfo else PUNTOS_CANTE
-			e.cantes.append({"jugador_id": jugador_id, "palo": palo, "puntos": puntos})
+			e.cantes.append({"jugador_id": jugador_id, "palo": palo, "puntos": puntos, "mano": e.mano_actual})
 			e.ultimo_cante_de[jugador_id] = e.bazas_jugadas
+			_comprobar_fin_de_vuelta(e)
 		MensajesRed.CANTAR_TUTE:
 			e.tute = {"jugador_id": jugador_id, "figura": jugada["figura"]}
+			_terminar(e, equipo_de(jugador_id), "tute")
 		MensajesRed.JUGAR_CARTA:
 			_jugar_carta(e, jugador_id, jugada["carta_id"])
 		MensajesRed.CAMBIAR_SIETE:
@@ -238,6 +260,13 @@ func _cerrar_baza(e: EstadoGuinote) -> void:
 	e.bazas_jugadas += 1
 	e.turno = ganador  # quien gana la baza sale en la siguiente
 
+	if e.mano_actual == EstadoGuinote.Mano.VUELTA:
+		_comprobar_fin_de_vuelta(e)
+		if ha_terminado(e):
+			return
+	elif e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA:
+		_cerrar_idas(e)
+		return
 	if e.fase != EstadoGuinote.Fase.ROBO:
 		return
 	if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
@@ -301,41 +330,105 @@ static func puntos_de(carta: Carta) -> int:
 	return PUNTOS.get(carta.valor, 0)
 
 
-## Termina al cantar Tute o al jugarse las 10 bazas. Provisional: las vueltas
-## llegan con pbi-03-tanteo-y-fin-partida.
+# --- Tanteo y fin de partida (§8) ---
+
 func ha_terminado(estado: EstadoPartida) -> bool:
-	var e := estado as EstadoGuinote
-	return not e.tute.is_empty() or e.bazas_jugadas >= EstadoGuinote.BAZAS_POR_PARTIDA
+	return (estado as EstadoGuinote).equipo_ganador != -1
 
 
-## Si alguien cantó Tute, gana su pareja. Si no, provisional hasta
-## pbi-03-tanteo-y-fin-partida: gana quien más tantos tenga, sin las reglas de
-## superar 100, el mínimo de 30 sin cantes ni las vueltas (§8).
-## Además de los campos del contrato devuelve el desglose, que el tanteo necesita:
-## [code]puntos_cartas[/code] (con las diez últimas), [code]puntos_cantes[/code]
-## y [code]motivo[/code] ("tute" o "tantos").
-func calcular_resultado(estado: EstadoPartida) -> Dictionary:
-	var e := estado as EstadoGuinote
+func _terminar(e: EstadoGuinote, equipo: int, motivo: String) -> void:
+	e.equipo_ganador = equipo
+	e.motivo_fin = motivo
+
+
+## Al acabar las 10 bazas de las idas: gana quien supere los 100 (con las reglas
+## de desempate y del mínimo de cartas) o, si nadie los supera, se juega la vuelta.
+func _cerrar_idas(e: EstadoGuinote) -> void:
+	var tanteo := tanteo_de_la_mano(e)
+	var ganador := decidir_idas(tanteo, equipo_de(e.ultima_baza["ganador"]))
+	if ganador != -1:
+		_terminar(e, ganador, "tantos")
+		return
+	# Vuelta: misma partida, el tanteo se arrastra. Reparte quien ganó la última baza.
+	e.tanteo_idas = tanteo
+	e.mano_actual = EstadoGuinote.Mano.VUELTA
+	e.dador = e.ultima_baza["ganador"]
+	_repartir(e)
+
+
+## Quién gana al terminar las idas, o -1 si hay que jugar la vuelta.
+## [param tanteo] es el de [method tanteo_de_la_mano]; [param equipo_ultima_baza],
+## el que hizo la última baza de las idas.
+## - Si solo una pareja supera los 100, gana esa; si las dos, la de la última baza.
+## - Pero una pareja con menos de 30 tantos solo de cartas (sin cantes ni diez
+##   últimas) no puede ganar por tantos: pierde, y gana la otra.
+static func decidir_idas(tanteo: Dictionary, equipo_ultima_baza: int) -> int:
+	var total: Array = tanteo["total"]
+	var superan := [0, 1].filter(func(equipo: int) -> bool: return total[equipo] > TANTOS_PARA_GANAR)
+	if superan.is_empty():
+		return -1
+	var ganador: int = superan[0] if superan.size() == 1 else equipo_ultima_baza
+	if tanteo["cartas"][ganador] < MINIMO_TANTOS_DE_CARTAS:
+		ganador = 1 - ganador
+	return ganador
+
+
+## En la vuelta, la partida termina en cuanto la pareja que acaba de ganar una
+## baza (o de cantar tras ganarla) supera los 100 tantos sumando los de las idas.
+func _comprobar_fin_de_vuelta(e: EstadoGuinote) -> void:
+	if e.mano_actual != EstadoGuinote.Mano.VUELTA or e.ultima_baza.is_empty():
+		return
+	var equipo := equipo_de(e.ultima_baza["ganador"])
+	if tanteo_acumulado(e)[equipo] > TANTOS_PARA_GANAR:
+		_terminar(e, equipo, "vuelta")
+
+
+## Tantos de la mano en curso, por equipo: [code]cartas[/code] (solo valor de
+## cartas), [code]cantes[/code], [code]diez_ultimas[/code] y [code]total[/code].
+func tanteo_de_la_mano(e: EstadoGuinote) -> Dictionary:
 	var cartas: Array[int] = [0, 0]
 	for equipo in 2:
 		for carta: Carta in e.cartas_ganadas[equipo]:
 			cartas[equipo] += puntos_de(carta)
-	if e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA and not e.ultima_baza.is_empty():
-		cartas[equipo_de(e.ultima_baza["ganador"])] += PUNTOS_ULTIMA_BAZA
 	var cantes: Array[int] = [0, 0]
 	for cante: Dictionary in e.cantes:
-		cantes[equipo_de(cante["jugador_id"])] += cante["puntos"]
-	var total: Array[int] = [cartas[0] + cantes[0], cartas[1] + cantes[1]]
+		if cante["mano"] == e.mano_actual:
+			cantes[equipo_de(cante["jugador_id"])] += cante["puntos"]
+	var diez_ultimas: Array[int] = [0, 0]
+	if e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA:
+		diez_ultimas[equipo_de(e.ultima_baza["ganador"])] = PUNTOS_ULTIMA_BAZA
+	var total: Array[int] = []
+	for equipo in 2:
+		total.append(cartas[equipo] + cantes[equipo] + diez_ultimas[equipo])
+	return {"cartas": cartas, "cantes": cantes, "diez_ultimas": diez_ultimas, "total": total}
 
-	var ganador := 0 if total[0] >= total[1] else 1
-	if not e.tute.is_empty():
-		ganador = equipo_de(e.tute["jugador_id"])
+
+## Tantos de toda la partida: los de las idas más los de la vuelta, si la hay.
+func tanteo_acumulado(e: EstadoGuinote) -> Array[int]:
+	var total: Array[int] = []
+	total.assign(tanteo_de_la_mano(e)["total"])
+	if not e.tanteo_idas.is_empty():
+		for equipo in 2:
+			total[equipo] += e.tanteo_idas["total"][equipo]
+	return total
+
+
+## [code]{ equipo_ganador, puntos_por_equipo, motivo, manos }[/code]:
+## [code]puntos_por_equipo[/code] son los tantos de toda la partida,
+## [code]motivo[/code] "tute", "tantos" o "vuelta", y [code]manos[/code] el
+## desglose de las idas y, si se jugó, de la vuelta. Antes de terminar,
+## [code]equipo_ganador[/code] es -1.
+func calcular_resultado(estado: EstadoPartida) -> Dictionary:
+	var e := estado as EstadoGuinote
+	var manos: Array[Dictionary] = []
+	if not e.tanteo_idas.is_empty():
+		manos.append(e.tanteo_idas)
+	manos.append(tanteo_de_la_mano(e))
 	return {
-		"equipo_ganador": ganador,
-		"puntos_por_equipo": total,
-		"puntos_cartas": cartas,
-		"puntos_cantes": cantes,
-		"motivo": "tute" if not e.tute.is_empty() else "tantos",
+		"equipo_ganador": e.equipo_ganador,
+		"puntos_por_equipo": tanteo_acumulado(e),
+		"motivo": e.motivo_fin,
+		"manos": manos,
 	}
 
 
@@ -370,9 +463,14 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"bazas_por_equipo": bazas_por_equipo,
 		"bazas_jugadas": e.bazas_jugadas,
 		"cantes": e.cantes.map(func(c: Dictionary) -> Dictionary: return {
-			"jugador_id": c["jugador_id"], "palo": nombre_palo(c["palo"]), "puntos": c["puntos"]}),
+			"jugador_id": c["jugador_id"], "palo": nombre_palo(c["palo"]), "puntos": c["puntos"],
+			"mano": "idas" if c["mano"] == EstadoGuinote.Mano.IDAS else "vuelta"}),
 		"tute": e.tute.duplicate(),
 		"esperando_cambio_siete": e.siete_pendiente,
+		"mano": "idas" if e.mano_actual == EstadoGuinote.Mano.IDAS else "vuelta",
+		# El tanteo de las idas se conoce al terminarlas; el de la mano en curso,
+		# cada jugador lo lleva "de memoria" como en la mesa.
+		"tanteo_idas": e.tanteo_idas.get("total", []),
 	}
 
 

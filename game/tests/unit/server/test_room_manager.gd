@@ -127,6 +127,16 @@ func test_la_partida_empieza_cuando_estan_todos() -> void:
 		assert_eq(_de(peer_y_posicion[0], MensajesRed.ESTADO_PARTIDA).size(), 1)
 
 
+func test_el_estado_incluye_las_jugadas_validas_de_cada_jugador() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	var estado_0: Dictionary = _de(10, MensajesRed.ESTADO_PARTIDA)[0]["payload"]
+	var estado_1: Dictionary = _de(11, MensajesRed.ESTADO_PARTIDA)[0]["payload"]
+	assert_eq(estado_0["jugadas_validas"].size(), 2, "le toca: puede jugar sus 2 cartas")
+	assert_eq(estado_0["jugadas_validas"][0]["carta_id"], estado_0["mi_mano"][0])
+	assert_eq(estado_1["jugadas_validas"], [] as Array[Dictionary], "no le toca")
+
+
 func test_cada_jugador_recibe_solo_su_mano() -> void:
 	_unirse(10, U0)
 	_unirse(11, U1)
