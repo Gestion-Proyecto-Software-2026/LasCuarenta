@@ -102,7 +102,9 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 | Método | Ruta | Cabecera | Body |
 |---|---|---|---|
 | GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
-| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, resultado: { equipos: [...], puntos: [...] } }` |
+| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, ... } }` |
+
+En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend puede rellenar `partidas` y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`). Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
 
 `GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo }] }` o `404` si la sala no existe. La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
@@ -112,7 +114,7 @@ El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X
 
 ## 6. Protocolo en tiempo real (cliente ↔ servidor de partida)
 
-Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, payload }`.
+Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por un único RPC del autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
 
 **Cliente → Servidor**
 
@@ -129,13 +131,17 @@ Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, 
 
 | Mensaje | Payload | Cuándo |
 |---|---|---|
-| `partida_iniciada` | `{ config }` | Al completarse la sala |
+| `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
 | `estado_partida` | snapshot filtrado (ver §7) | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` | Al finalizar |
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. |
 
 **Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
+
+**Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
+
+**Desconexión y reconexión:** si un jugador se desconecta, su asiento queda libre pero la partida sigue en memoria. Si vuelve a enviar `unirse_partida` para la misma sala (desde la misma o desde otra conexión), recupera su asiento y recibe `partida_iniciada` y `estado_partida` para ponerse al día. Si el mismo usuario se une desde una segunda conexión mientras la primera sigue abierta, se expulsa la primera. *Pendiente de decidir:* qué pasa si un jugador no vuelve (hoy la partida espera indefinidamente) y cuánto tiempo se espera a que alguien envíe `unirse_partida` tras conectarse.
 
 **Identificador de carta (`carta_id`):** `"<palo>_<valor>"` en minúsculas, con palo `oros|copas|espadas|bastos` y valor `1`–`7`, `10` (sota), `11` (caballo) o `12` (rey). Ejemplos: `"oros_1"`, `"espadas_12"`. Lo genera y valida `Carta` (`game/shared/carta.gd`); un id que no corresponde a ninguna carta se rechaza con `error`.
 

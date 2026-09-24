@@ -138,7 +138,36 @@ paths:
   /interno/partidas:
     post:
       summary: (Interno) Registrar el resultado de una partida terminada
-      description: Solo lo invoca el servidor de partida, nunca el cliente.
+      description: Solo lo invoca el servidor de partida, nunca el cliente. Ver analisis_funcional_app.md §5.
+      parameters:
+        - name: X-Internal-Secret
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sala_id, jugadores, resultado]
+              properties:
+                sala_id: { type: string, format: uuid }
+                jugadores:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      usuario_id: { type: string, format: uuid }
+                      posicion: { type: integer, minimum: 0, maximum: 3 }
+                      equipo: { type: integer }
+                resultado:
+                  type: object
+                  required: [equipo_ganador, puntos_por_equipo]
+                  properties:
+                    equipo_ganador: { type: integer }
+                    puntos_por_equipo: { type: array, items: { type: integer } }
+                  additionalProperties: true
       responses:
         "201": { description: Resultado guardado }
 components:

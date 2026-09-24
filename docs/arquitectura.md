@@ -57,7 +57,13 @@ Correspondencia directa entre el árbol del repositorio y las tres piezas de §1
 
 Dentro de `backend/src/`, la estructura actual ya separa por capa: `routes/` (un fichero por recurso: `auth.js`, `lobby.js`, `historial.js`, `ranking.js`), `middleware/` (`auth.js` = verificación de JWT), `models/` (`db.js` = pool de conexión `pg`, único punto de acceso a PostgreSQL). `app.js` monta cada grupo de rutas bajo su prefijo (`/api/auth`, `/api/salas`, `/api/usuarios`, `/api/ranking`) y expone `/health`; `index.js` solo arranca el servidor HTTP.
 
-En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada headless: abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y registra conexiones/desconexiones. `game_engine/motor_de_juego.gd` define la clase base abstracta `MotorDeJuego` (con `estado_partida.gd` y `resultado_jugada.gd`), que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7). **Pendiente de implementar** (PBI-03; lo que sigue es el diseño previsto): `main_server.gd` delegará las conexiones en `RoomManager`, y `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala.
+En `game/server/`:
+- `main_server.tscn`/`main_server.gd` — punto de entrada headless. Lee la configuración del entorno (§3), abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y conecta la red (`CanalRed`) con `RoomManager`. Su constante `MOTORES` asocia cada juego con su motor; cada PBI de juego añade ahí su línea.
+- `room_manager.gd` — mantiene `salas_activas` (`sala_id → SalaActiva`) y es el único punto que conoce qué motor corresponde a cada sala. Valida `unirse_partida` (token con `verificador_jwt.gd`, sala con `cliente_backend.gd`), sienta a cada jugador en su posición, arranca la partida cuando están todos, pasa cada jugada al motor, difunde el estado filtrado y registra el resultado en el backend. No conoce ENet ni ninguna regla de juego: recibe mensajes y emite señales, así que se prueba sin red.
+- `sala_activa.gd` — una sala en memoria: asientos, conexiones y estado de la partida.
+- `game_engine/motor_de_juego.gd` — clase base abstracta `MotorDeJuego` (con `estado_partida.gd` y `resultado_jugada.gd`), que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
+
+En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload `CanalRed`, el único RPC por el que viajan los mensajes) y `mensajes_red.gd` (nombres de los mensajes del protocolo).
 
 ---
 
@@ -67,7 +73,7 @@ En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada he
 |---|---|---|
 | Cliente | Godot 4.7, GDScript | Exportado a ejecutable Windows/Linux, no a Web |
 | Red cliente ↔ servidor de partida | `ENetMultiplayerPeer` sobre UDP | Sin TLS en este canal (ver §5) |
-| Servidor de partida | Godot 4.7 headless, GDScript | `godot --headless --path game res://server/main_server.tscn`, puerto 9000 (`-- --puerto=N` para cambiarlo). Leerá del entorno `JWT_SECRET`, `INTERNAL_API_SECRET` y `BACKEND_URL` |
+| Servidor de partida | Godot 4.7 headless, GDScript | `godot --headless --path game res://server/main_server.tscn`, puerto 9000 (`-- --puerto=N` para cambiarlo). Lee del entorno `JWT_SECRET` y `INTERNAL_API_SECRET` (obligatorios) y `BACKEND_URL` (opcional) |
 | Backend | Node.js + Express | `backend/src/app.js` |
 | Base de datos | PostgreSQL 16 | Extensión `pgcrypto` para `gen_random_uuid()` (`migrations/001_init.sql`) |
 | Autenticación | JWT (`jsonwebtoken`) + `bcrypt` para contraseñas | Verificado en `backend/src/middleware/auth.js` |
@@ -81,7 +87,11 @@ En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada he
 **Desarrollo local:**
 1. `docker compose up -d` — levanta `db` (Postgres, puerto expuesto `5432`) y `backend` (puerto `3000`), con `JWT_SECRET` y `DATABASE_URL` de ejemplo en el propio `docker-compose.yml`.
 2. `backend/migrations/001_init.sql` se aplica manualmente contra la base de datos (no hay migrador automático configurado todavía).
-3. El servidor de partida y el cliente se lanzan aparte con el editor/CLI de Godot — no están en `docker-compose.yml`.
+3. El servidor de partida y el cliente se lanzan aparte con el editor/CLI de Godot — no están en `docker-compose.yml`. El servidor necesita los mismos secretos que el backend de `docker-compose.yml`, o no arranca:
+   ```bash
+   JWT_SECRET=cambia_esto_en_produccion INTERNAL_API_SECRET=cambia_esto_tambien_en_produccion      godot --headless --path game res://server/main_server.tscn
+   ```
+   `BACKEND_URL` es opcional (por defecto `http://localhost:3000/api`).
 
 **Producción (según `infra/nginx/nginx.conf`):**
 - nginx expone `api.tudominio.com` en el puerto 443, con certificado TLS de Let's Encrypt, y hace `proxy_pass` a `backend:3000`. El puerto 80 solo redirige a HTTPS.
