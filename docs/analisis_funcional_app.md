@@ -122,7 +122,8 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 |---|---|---|
 | `unirse_partida` | `{ usuario_id, token, sala_id }` | Al conectar por ENet |
 | `jugar_carta` | `{ carta_id }` | Turno del jugador |
-| `cantar` | `{ palo }` | Guiñote/Tute, tras ganar baza |
+| `cantar` | `{ palo }` (`oros`, `copas`, `espadas` o `bastos`) | Guiñote/Tute: cuando la pareja del jugador acaba de ganar la baza (ver §8) |
+| `cantar_tute` | `{ figura }` (`reyes` o `sotas` en Guiñote) | Guiñote/Tute: con las 4 figuras en la mano, en el mismo momento en que se puede cantar |
 | `mus` / `no_mus` | — | Fase de decisión en Mus |
 | `apostar` | `{ tipo, cantidad }` | Envite/órdago en Mus |
 | `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
@@ -254,8 +255,10 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 - **Arrastre, cómo se interpretan las obligaciones:** el texto de arriba deja dos puntos abiertos, y el motor los resuelve así (⚠️ pendiente de que el equipo lo confirme; si se decide otra cosa, solo cambia `cartas_permitidas_en_arrastre`):
   - La regla 3 ("si ya hay un triunfo jugado, desaparece la obligación de montar") solo se aplica cuando el palo de salida **no** es triunfo, es decir, cuando alguien ha fallado. Si sale triunfo, hay que montar en triunfo como en cualquier otro palo; si no, al haber siempre un triunfo en la mesa (el de salida), nunca habría que montar en triunfo.
   - No hay excepción por ir ganando el compañero. Hay que montar aunque la carta más alta sea suya, y para fallar solo cuentan los triunfos de los **rivales**: si solo ha fallado el compañero, hay que fallar igualmente, con cualquier triunfo.
+- **Cantes:** se pueden hacer fuera de turno y no cambian el turno. El momento para cantar va desde que la pareja gana la baza hasta que un rival juega carta en la siguiente, así que quien sale puede cantar antes o después de echar su carta. Cantar ya revela que se tienen la Sota y el Rey, así que "enseñar las cartas" no requiere nada más. Dos puntos que el texto no dice y el motor decide (⚠️ pendiente de confirmar): un palo ya cantado no se puede volver a cantar en la misma partida, y el **Tute** se canta en el mismo momento que los cantes (tras ganar baza su pareja), no en cualquier momento.
+- **Cambio del siete:** ⚠️ todavía no implementado, pendiente de decidir cómo encaja con el robo automático; ver `pbi-03-cantes`.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
-- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`) y el arrastre (`pbi-03-fase-arrastre`) están implementados: las idas se juegan enteras, con sus 10 bazas. Los cantes con el cambio del siete, y el tanteo con las vueltas, llegan en `pbi-03-cantes` y `pbi-03-tanteo-y-fin-partida`. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
+- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`), el arrastre (`pbi-03-fase-arrastre`) y los cantes con el Tute (`pbi-03-cantes`) están implementados. Falta el cambio del siete y el tanteo con las vueltas (`pbi-03-tanteo-y-fin-partida`). `calcular_resultado` ya separa `puntos_cartas` (con las diez últimas) de `puntos_cantes`, que es lo que necesita la regla de los 30 tantos sin cantes. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
 
 ---
 

@@ -32,3 +32,10 @@ var ultima_baza: Dictionary = {}
 ## Cartas ganadas por cada equipo (boca abajo), para el tanteo.
 var cartas_ganadas: Array = [[], []]
 var bazas_jugadas: int = 0
+## Cantes hechos, en orden: [{ "jugador_id": int, "palo": Carta.Palo, "puntos": int }].
+var cantes: Array[Dictionary] = []
+## Valor de bazas_jugadas cuando cantó cada jugador por última vez (-1 si nunca):
+## cada miembro de la pareja puede cantar una vez por baza ganada.
+var ultimo_cante_de: Array[int] = [-1, -1, -1, -1]
+## Si alguien ha cantado Tute: { "jugador_id": int, "figura": "reyes" | "sotas" }.
+var tute: Dictionary = {}

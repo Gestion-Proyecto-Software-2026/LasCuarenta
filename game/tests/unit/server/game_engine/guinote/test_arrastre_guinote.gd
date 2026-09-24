@@ -100,11 +100,14 @@ func _motor(semilla: int) -> MotorGuinote:
 	return MotorGuinote.new(rng)
 
 
-## Juega una partida entera eligiendo al azar entre las jugadas válidas y
-## comprueba por el camino que nadie se queda nunca sin jugada posible.
+## Juega una partida entera eligiendo al azar entre las jugadas válidas del
+## jugador en turno (cartas y cantes) y comprueba por el camino que nunca se
+## queda sin jugada posible.
 func _partida_al_azar(motor: MotorGuinote, rng: RandomNumberGenerator) -> EstadoGuinote:
 	var e := motor.iniciar(4) as EstadoGuinote
-	for turno in 40:
+	for paso in 200:
+		if motor.ha_terminado(e):
+			break
 		var validas := motor.jugadas_validas(e, e.turno)
 		assert_false(validas.is_empty(), "el jugador %d se ha quedado sin jugadas (baza %d)" % [e.turno, e.bazas_jugadas + 1])
 		if validas.is_empty():
@@ -122,11 +125,13 @@ func test_partidas_completas_de_diez_bazas() -> void:
 		var motor := _motor(semilla)
 		var e := _partida_al_azar(motor, rng)
 		assert_true(motor.ha_terminado(e), "semilla %d" % semilla)
+		if not e.tute.is_empty():
+			continue  # un Tute termina la partida antes de tiempo
 		assert_eq(e.bazas_jugadas, 10)
 		assert_eq(e.cartas_ganadas[0].size() + e.cartas_ganadas[1].size(), 40)
 		for mano: Array in e.manos:
 			assert_true(mano.is_empty())
-		var puntos: Array = motor.calcular_resultado(e)["puntos_por_equipo"]
+		var puntos: Array = motor.calcular_resultado(e)["puntos_cartas"]
 		assert_eq(puntos[0] + puntos[1], 130, "cartas + diez últimas (semilla %d)" % semilla)
 		assert_eq(motor.jugadas_validas(e, e.turno), [] as Array[Dictionary], "tras la última baza no se juega más")
 
@@ -140,7 +145,8 @@ func test_en_arrastre_se_rechaza_una_carta_no_permitida() -> void:
 		var motor := _motor(semilla)
 		var e := motor.iniciar(4) as EstadoGuinote
 		while not motor.ha_terminado(e):
-			var validas := motor.jugadas_validas(e, e.turno)
+			var validas := motor.jugadas_validas(e, e.turno).filter(func(j: Dictionary) -> bool:
+				return j["tipo"] == MensajesRed.JUGAR_CARTA)
 			if e.fase == EstadoGuinote.Fase.ARRASTRE and validas.size() < e.manos[e.turno].size():
 				var permitidas := validas.map(func(j: Dictionary) -> String: return j["carta_id"])
 				for carta: Carta in e.manos[e.turno]:

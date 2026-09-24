@@ -8,6 +8,7 @@ extends RefCounted
 const UNIRSE_PARTIDA := "unirse_partida"
 const JUGAR_CARTA := "jugar_carta"
 const CANTAR := "cantar"
+const CANTAR_TUTE := "cantar_tute"
 const MUS := "mus"
 const NO_MUS := "no_mus"
 const APOSTAR := "apostar"
