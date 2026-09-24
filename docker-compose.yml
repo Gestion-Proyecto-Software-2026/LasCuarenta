@@ -8,6 +8,9 @@ services:
       POSTGRES_DB: cartas_online
     volumes:
       - db_data:/var/lib/postgresql/data
+      # PostgreSQL ejecuta estos scripts solo al crear la base de datos (volumen
+      # vacío). Con un volumen ya creado, las migraciones nuevas se aplican a mano.
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
 

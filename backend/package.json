@@ -2,11 +2,16 @@
   "name": "cartas-online-backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.12"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests"
   },
   "dependencies": {
     "express": "^4.19.2",

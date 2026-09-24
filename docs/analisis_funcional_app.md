@@ -2,7 +2,7 @@
 ## Variante: aplicación nativa de escritorio (Windows/Linux)
 
 **Estado:** borrador vivo — actualizadlo cuando cambie una decisión, no lo dejéis desincronizado del código.
-**Relación con la otra variante:** este documento es una copia de `analisis_funcional.md` (variante Web) con los cambios que implica repartir un ejecutable en vez de exportar a navegador. Si el equipo decide definitivamente una de las dos opciones, borrad la otra para no mantener dos fuentes de verdad a la vez.
+**Variante:** este documento describe la aplicación nativa de escritorio, que es la que se implementa. Partió de un análisis de una variante Web que ya no está en el repositorio; es la única fuente de verdad.
 **Cómo usar este documento:** pegadlo entero al principio de la conversación con vuestro asistente de IA antes de pedirle que implemente una parte concreta, indicando qué PBI o fase os toca. El objetivo es que cualquiera de los 4 —con cualquier IA— construya contra los mismos contratos, en vez de que cada uno invente su propio formato de datos o de mensajes.
 
 Este documento complementa al informe de la Práctica 1 (que fija roles, pila del producto y definición de hecho) y a la estructura de carpetas ya acordada. Aquí se detalla el **cómo**: modelo de datos, contratos de API, protocolo de red y reglas de cada juego.
@@ -37,7 +37,7 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 | Peer de red multijugador | `ENetMultiplayerPeer` | `WebSocketMultiplayerPeer` | ENet es el peer por defecto de Godot; al no haber cliente Web no hace falta forzar WebSocket |
 | Transporte cliente↔servidor de partida | ENet sobre UDP | — | Suficiente para un juego por turnos; no requiere TLS en este canal (a diferencia del backend REST, que sí va cifrado por las credenciales de login) |
 | Estilo de código GDScript | `snake_case` (funciones/variables), `PascalCase` (clases), según [guía oficial de Godot](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html) | — | Consistencia entre los módulos de los 3 juegos |
-| Estilo de código backend | `camelCase`, formateado con Prettier | ESLint | El equipo simplificó este punto en la Práctica 1 entregada: ya no exige un linter en la Definición de Hecho, solo formateo con Prettier |
+| Estilo de código backend | `camelCase`, formateado con Prettier (`npm run format`; el CI lo comprueba con `npm run format:check`) | — | El equipo simplificó este punto en la Práctica 1 entregada: la Definición de Hecho solo exige formateo con Prettier. El CI además ejecuta ESLint (`npm run lint`) como red de seguridad, aunque no forma parte de la Definición de Hecho |
 | Flujo de ramas | rama por PBI/tarea + PR revisada por otra persona antes de `main` | commits directos a `main` | Ya forma parte de la Definición de Hecho |
 
 **Recordatorio de requisitos no funcionales clave** (fuente de verdad: informe de la Práctica 1 entregado, §4 Definición de Hecho — para el detalle completo consultad ese documento, no lo dupliquéis de memoria):
@@ -400,4 +400,4 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 - Antes de pedirle a vuestra IA que implemente una PBI, decidle explícitamente qué sección de este documento es la relevante (por ejemplo: "implementa el endpoint POST /auth/registro según la sección 5 de analisis_funcional.md").
 - Las secciones marcadas con ⚠️ son avisos permanentes para quien programe (p. ej. que Guiñote y Tute no comparten la tabla de valores de cartas), no decisiones pendientes.
 - **Corrección de reglas (23/09/2026):** la fuente usada originalmente para §8 (Guiñote) tenía mal el reparto y la fase de robo; se ha corregido contra el reglamento oficial del torneo aportado por el equipo. Mus (§9) y Tute (§10) no se han tocado en esta revisión — si alguien detecta el mismo tipo de problema en esas secciones, hay que avisar para corregirlas también con una fuente igual de fiable.
-- **Estado actual:** las reglas de Mus y Tute siguen cerradas tal como estaban, con sus decisiones de producto ya tomadas (Tute limitado a la variante de 4 jugadores por parejas, sin señas en Mus online). Las de Guiñote (§8) están corregidas y cerradas salvo el punto pendiente señalado arriba; el resto de §8 ya se puede implementar directamente.
+- **Estado actual:** las reglas de Mus y Tute siguen cerradas tal como estaban, con sus decisiones de producto ya tomadas (Tute limitado a la variante de 4 jugadores por parejas, sin señas en Mus online). Las de Guiñote (§8) están corregidas, cerradas e implementadas; los puntos que el texto dejaba abiertos y cómo los resuelve el motor están en las notas de implementación de §8 (marcados con ⚠️), pendientes de que el equipo los confirme.

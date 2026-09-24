@@ -86,12 +86,13 @@ En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload
 
 **Desarrollo local:**
 1. `docker compose up -d` — levanta `db` (Postgres, puerto expuesto `5432`) y `backend` (puerto `3000`), con `JWT_SECRET` y `DATABASE_URL` de ejemplo en el propio `docker-compose.yml`.
-2. `backend/migrations/001_init.sql` se aplica manualmente contra la base de datos (no hay migrador automático configurado todavía).
+2. Las migraciones de `backend/migrations/` se aplican solas la primera vez, cuando PostgreSQL crea la base de datos (están montadas en `docker-entrypoint-initdb.d`). Con un volumen que ya existe no se vuelven a ejecutar: una migración nueva se aplica a mano, o se empieza de cero con `docker compose down -v` (borra los datos).
 3. El servidor de partida y el cliente se lanzan aparte con el editor/CLI de Godot — no están en `docker-compose.yml`. El servidor necesita los mismos secretos que el backend de `docker-compose.yml`, o no arranca:
    ```bash
-   JWT_SECRET=cambia_esto_en_produccion INTERNAL_API_SECRET=cambia_esto_tambien_en_produccion      godot --headless --path game res://server/main_server.tscn
+   JWT_SECRET=cambia_esto_en_produccion INTERNAL_API_SECRET=cambia_esto_tambien_en_produccion godot --headless --path game res://server/main_server.tscn
    ```
    `BACKEND_URL` es opcional (por defecto `http://localhost:3000/api`).
+4. Para arrancar el backend fuera de Docker (`npm run dev` en `backend/`), copiad `backend/.env.example` a `backend/.env`: `src/index.js` lo carga al arrancar, y las variables que ya existan en el entorno tienen prioridad.
 
 **Producción (según `infra/nginx/nginx.conf`):**
 - nginx expone `api.tudominio.com` en el puerto 443, con certificado TLS de Let's Encrypt, y hace `proxy_pass` a `backend:3000`. El puerto 80 solo redirige a HTTPS.

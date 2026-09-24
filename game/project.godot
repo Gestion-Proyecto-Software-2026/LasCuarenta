@@ -22,3 +22,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 FuncionesGlobales="*res://client/autoload/funciones_globales.gd"
 CanalRed="*res://shared/canal_red.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")

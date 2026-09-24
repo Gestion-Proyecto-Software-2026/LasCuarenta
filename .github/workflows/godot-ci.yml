@@ -16,6 +16,8 @@ jobs:
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.7.2
+          # Godot estándar, sin .NET: el proyecto es solo GDScript.
+          use-dotnet: false
       # Requiere tener el addon GUT instalado en game/addons/gut
       - name: Run GUT tests (headless)
         working-directory: game
