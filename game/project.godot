@@ -20,4 +20,4 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 
-FuncionesGlobales="*res://client/Funciones_Globales.gd"
+FuncionesGlobales="*res://client/autoload/funciones_globales.gd"

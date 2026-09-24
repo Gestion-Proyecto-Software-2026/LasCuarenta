@@ -50,14 +50,14 @@ Correspondencia directa entre el árbol del repositorio y las tres piezas de §1
 |---|---|---|---|
 | `game/client/` | Cliente | Presentación e input | Nunca decide si una jugada es válida — se lo pregunta al servidor |
 | `game/server/` | Servidor de partida | Lógica autoritativa (`RoomManager` + `MotorDeJuego` por juego) | Ningún script hereda de un nodo visual (`Node2D`, `Control`, etc.) |
-| `game/shared/` | Cliente + Servidor de partida | Definición de carta, constantes de mensajes de red, tipos comunes | Sin duplicar entre cliente y servidor |
+| `game/shared/` | Cliente + Servidor de partida | Definición de carta (`carta.gd`, `baraja.gd`), constantes de mensajes de red, tipos comunes | Sin duplicar entre cliente y servidor; nada de texturas ni nodos visuales |
 | `backend/` | Backend REST | Cuentas, lobby, historial, ranking | Sin conocimiento de las reglas de ningún juego |
 | `infra/` | Despliegue | nginx + TLS delante del backend | El servidor de partida (ENet/UDP) no pasa por aquí |
 | `docs/` | — | Documentación técnica y de arquitectura | — |
 
 Dentro de `backend/src/`, la estructura actual ya separa por capa: `routes/` (un fichero por recurso: `auth.js`, `lobby.js`, `historial.js`, `ranking.js`), `middleware/` (`auth.js` = verificación de JWT), `models/` (`db.js` = pool de conexión `pg`, único punto de acceso a PostgreSQL). `app.js` monta cada grupo de rutas bajo su prefijo (`/api/auth`, `/api/salas`, `/api/usuarios`, `/api/ranking`) y expone `/health`; `index.js` solo arranca el servidor HTTP.
 
-En `game/server/` (**pendiente de implementar**: estos ficheros se retiraron del repo en septiembre de 2026 y se reescribirán en el primer PBI de juego; lo que sigue es el diseño previsto), `main_server.gd` será el punto de entrada headless (abrirá el `ENetMultiplayerPeer` en el puerto 9000 y delegará las conexiones/desconexiones en `RoomManager`); `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala; `game_engine/interfaz_comun.gd` definirá la clase base `MotorDeJuego` que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
+En `game/server/`, `main_server.tscn`/`main_server.gd` es el punto de entrada headless: abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y registra conexiones/desconexiones. **Pendiente de implementar** (se reescribirán en PBI-03; lo que sigue es el diseño previsto): `main_server.gd` delegará las conexiones en `RoomManager`; `room_manager.gd` mantendrá el diccionario `salas_activas` (`sala_id → MotorDeJuego`) y será el único punto que conozca qué módulo de juego corresponde a cada sala; `game_engine/interfaz_comun.gd` definirá la clase base `MotorDeJuego` que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
 
 ---
 
@@ -67,7 +67,7 @@ En `game/server/` (**pendiente de implementar**: estos ficheros se retiraron del
 |---|---|---|
 | Cliente | Godot 4.7, GDScript | Exportado a ejecutable Windows/Linux, no a Web |
 | Red cliente ↔ servidor de partida | `ENetMultiplayerPeer` sobre UDP | Sin TLS en este canal (ver §5) |
-| Servidor de partida | Godot 4 headless, GDScript | `godot --headless --path game`, puerto 9000 |
+| Servidor de partida | Godot 4.7 headless, GDScript | `godot --headless --path game res://server/main_server.tscn`, puerto 9000 (`-- --puerto=N` para cambiarlo) |
 | Backend | Node.js + Express | `backend/src/app.js` |
 | Base de datos | PostgreSQL 16 | Extensión `pgcrypto` para `gen_random_uuid()` (`migrations/001_init.sql`) |
 | Autenticación | JWT (`jsonwebtoken`) + `bcrypt` para contraseñas | Verificado en `backend/src/middleware/auth.js` |

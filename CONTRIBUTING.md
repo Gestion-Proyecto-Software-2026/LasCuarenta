@@ -79,9 +79,10 @@ Estas ramas se actualizan si el desglose real de un PBI cambia durante el groomi
 
 **Juego (GUT):**
 - GUT barre `game/tests/` y sus subcarpetas (configurado en `game/.gutconfig.json`). Solo se ejecutan los ficheros `test_*.gd` que extienden `GutTest`.
-- Tests unitarios de `shared/` y `server/game_engine/` en `game/tests/unit/`, reflejando la ruta del script probado (p. ej. `server/game_engine/guinote/motor_guinote.gd` → `tests/unit/game_engine/guinote/test_motor_guinote.gd`). Los que necesitan varias piezas a la vez (`RoomManager` + un motor) van en `game/tests/integration/`.
+- Tests unitarios de `shared/` y `server/game_engine/` en `game/tests/unit/`, reflejando la ruta del script probado (p. ej. `shared/baraja.gd` → `tests/unit/shared/test_baraja.gd`, `server/game_engine/guinote/motor_guinote.gd` → `tests/unit/server/game_engine/guinote/test_motor_guinote.gd`). Los que necesitan varias piezas a la vez (`RoomManager` + un motor) van en `game/tests/integration/`.
 - El 60% de cobertura mínima aplica a la lógica de juego (`shared/` + `server/game_engine/`), no al cliente.
-- En local, igual que en CI (Godot 4.7.2): `godot --headless --path game -s addons/gut/gut_cmdln.gd`. `tests/test_smoke.gd` solo comprueba que el proyecto carga y se puede borrar cuando haya tests reales.
+- En local, igual que en CI (Godot 4.7.2): `godot --headless --path game -s addons/gut/gut_cmdln.gd`.
+- Nombres de ficheros y carpetas de `game/` en `snake_case`, igual que el `class_name` en `snake_case` (`class_name Baraja` → `baraja.gd`), según la guía de estilo de Godot. Cada escena del cliente va en su propia carpeta junto a su script (`client/scenes/carta/carta.tscn` + `carta.gd`).
 
 ## 6. Antes de abrir un PR
 

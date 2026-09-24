@@ -132,6 +132,8 @@ Mensajes sobre ENet (UDP), mapeados a RPCs de Godot. Formato sugerido: `{ tipo, 
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. |
 
+**Identificador de carta (`carta_id`):** `"<palo>_<valor>"` en minúsculas, con palo `oros|copas|espadas|bastos` y valor `1`–`7`, `10` (sota), `11` (caballo) o `12` (rey). Ejemplos: `"oros_1"`, `"espadas_12"`. Lo genera y valida `Carta` (`game/shared/carta.gd`); un id que no corresponde a ninguna carta se rechaza con `error`.
+
 **Regla importante:** el servidor nunca envía a un cliente las cartas en mano de otro jugador. El snapshot se filtra por destinatario antes de enviarse (ver `vista_para_jugador` en §7).
 
 ---
