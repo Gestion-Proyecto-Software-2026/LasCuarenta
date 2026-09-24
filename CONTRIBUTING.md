@@ -38,7 +38,49 @@ Esto encaja con que `MotorDeJuego` es una interfaz (`docs/analisis_funcional_app
 
 Si dos personas comparten una PBI grande, mejor repartir en subtareas independientes (cada una con su rama/PR) que dos personas empujando a la misma rama.
 
-## 4. Antes de abrir un PR
+## 4. Lista completa de ramas por PBI
+
+Aplicando las reglas de arriba a las 9 PBI de la pila (talla y prioridad según la Práctica 1 entregada):
+
+**Prioridad alta**
+
+| PBI | Talla | Rama(s) |
+|---|---|---|
+| PBI-01 — Registro y autenticación | M | `pbi-01-registro-autenticacion` |
+| PBI-02 — Lobby y gestión de salas | L | `pbi-02-listar-y-crear-sala`, `pbi-02-unirse-a-sala` |
+| PBI-03 — Partida completa de Guiñote | XL | `pbi-03-reparto-y-robo`, `pbi-03-fase-arrastre`, `pbi-03-cantes`, `pbi-03-tanteo-y-fin-partida` |
+
+**Prioridad media**
+
+| PBI | Talla | Rama(s) |
+|---|---|---|
+| PBI-04 — Partida completa de Mus | XL | `pbi-04-reparto-y-fase-mus`, `pbi-04-jugadas-y-apuestas`, `pbi-04-cobro-y-fin-partida` |
+| PBI-05 — Partida completa de Tute | L | `pbi-05-reparto-y-arrastre`, `pbi-05-cantes-y-tute`, `pbi-05-tanteo-y-fin-partida` |
+| PBI-06 — Historial y estadísticas | M | `pbi-06-historial-estadisticas` |
+
+**Prioridad baja**
+
+| PBI | Talla | Rama(s) |
+|---|---|---|
+| PBI-07 — Ranking de jugadores | S | `pbi-07-ranking-jugadores` |
+| PBI-08 — Chat en partida | S | `pbi-08-chat-partida` |
+| PBI-09 — Moderación de salas | S | `pbi-09-moderacion-salas` |
+
+Las M/S van en una sola rama porque no compensa trocearlas. PBI-02 se separa en "listar+crear" vs "unirse" porque son los dos únicos bloques con lógica distinta (expulsar ya es PBI-09 aparte). PBI-03 sigue las fases reales del reglamento de Guiñote (§8: robo, arrastre, cantes, tanteo/fin). PBI-04 sigue las fases del Mus (§9: reparto+decisión de mus, jugadas con sus apuestas, cobro final). PBI-05 reutiliza el patrón de Guiñote pero sin fase de robo, por eso le bastan 3 subtareas en vez de 4.
+
+Estas ramas se actualizan si el desglose real de un PBI cambia durante el grooming — no son un compromiso rígido, son el punto de partida.
+
+## 5. Convención de tests
+
+**Backend (Jest + Supertest) — ya se puede seguir:**
+- Un fichero de test por recurso en `backend/tests/`, reflejando `backend/src/routes/`: `auth.test.js`, `lobby.test.js`, `historial.test.js`, `ranking.test.js` — mismo patrón que ya usa `health.test.js` (Supertest contra `app` directamente, sin levantar un servidor real).
+- Las rutas que tocan PostgreSQL necesitan una base de datos de test. Recomendado: la misma `db` de `docker-compose.yml`, pero con una base separada (`cartas_online_test`) para no mezclar datos con desarrollo — no compartáis la `cartas_online` de trabajo diario.
+- La Definición de Hecho exige que estos tests **pasen** en CI; el 60% de cobertura mínima aplica solo a la lógica de juego, no al backend.
+
+**Juego (GUT) — bloqueado por ahora:**
+- No se puede fijar la convención todavía porque `game/project.godot` no existe en `main` (ver el hueco abierto sobre `game/las-cuarenta/`). En cuanto se resuelva, queda pendiente decidir la carpeta que GUT barre (normalmente vía `.gutconfig.json` apuntando a `game/tests/`) antes de escribir el primer test de lógica de juego.
+
+## 6. Antes de abrir un PR
 
 Checklist resumido de la Definición de Hecho (fuente completa: informe de la Práctica 1 entregado, §4):
 
@@ -49,7 +91,7 @@ Checklist resumido de la Definición de Hecho (fuente completa: informe de la Pr
 - [ ] GDScript sigue la [guía de estilo oficial de Godot](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html).
 - [ ] Funcionalidad probada en el entorno de pruebas.
 
-## 5. Estructura de carpetas (recordatorio)
+## 7. Estructura de carpetas (recordatorio)
 
 | Carpeta | Contenido |
 |---|---|
