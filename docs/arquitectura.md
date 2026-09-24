@@ -65,7 +65,7 @@ En `game/server/`, `main_server.gd` es el punto de entrada headless (abre el `EN
 
 | Componente | Tecnología | Notas |
 |---|---|---|
-| Cliente | Godot 4.3+, GDScript | Exportado a ejecutable Windows/Linux, no a Web |
+| Cliente | Godot 4.7, GDScript | Exportado a ejecutable Windows/Linux, no a Web |
 | Red cliente ↔ servidor de partida | `ENetMultiplayerPeer` sobre UDP | Sin TLS en este canal (ver §5) |
 | Servidor de partida | Godot 4 headless, GDScript | `godot --headless --path game`, puerto 9000 |
 | Backend | Node.js + Express | `backend/src/app.js` |
