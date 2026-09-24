@@ -39,3 +39,6 @@ var cantes: Array[Dictionary] = []
 var ultimo_cante_de: Array[int] = [-1, -1, -1, -1]
 ## Si alguien ha cantado Tute: { "jugador_id": int, "figura": "reyes" | "sotas" }.
 var tute: Dictionary = {}
+## Tras la 4ª baza, si alguien de la pareja ganadora tiene el 7 de triunfo, el
+## último robo espera a que decida si lo cambia por la pinta. -1 si no se espera.
+var siete_pendiente: int = -1

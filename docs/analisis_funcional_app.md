@@ -124,6 +124,8 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `jugar_carta` | `{ carta_id }` | Turno del jugador |
 | `cantar` | `{ palo }` (`oros`, `copas`, `espadas` o `bastos`) | Guiñote/Tute: cuando la pareja del jugador acaba de ganar la baza (ver §8) |
 | `cantar_tute` | `{ figura }` (`reyes` o `sotas` en Guiñote) | Guiñote/Tute: con las 4 figuras en la mano, en el mismo momento en que se puede cantar |
+| `cambiar_siete` | — | Guiñote: cambiar el 7 de triunfo por la pinta cuando la pareja del jugador ganó la última baza, o para decidir tras la 4ª baza (ver §8) |
+| `no_cambiar_siete` | — | Guiñote: solo tras la 4ª baza, cuando el servidor espera esa decisión (`esperando_cambio_siete` en `estado_partida`) |
 | `mus` / `no_mus` | — | Fase de decisión en Mus |
 | `apostar` | `{ tipo, cantidad }` | Envite/órdago en Mus |
 | `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
@@ -256,9 +258,12 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
   - La regla 3 ("si ya hay un triunfo jugado, desaparece la obligación de montar") solo se aplica cuando el palo de salida **no** es triunfo, es decir, cuando alguien ha fallado. Si sale triunfo, hay que montar en triunfo como en cualquier otro palo; si no, al haber siempre un triunfo en la mesa (el de salida), nunca habría que montar en triunfo.
   - No hay excepción por ir ganando el compañero. Hay que montar aunque la carta más alta sea suya, y para fallar solo cuentan los triunfos de los **rivales**: si solo ha fallado el compañero, hay que fallar igualmente, con cualquier triunfo.
 - **Cantes:** se pueden hacer fuera de turno y no cambian el turno. El momento para cantar va desde que la pareja gana la baza hasta que un rival juega carta en la siguiente, así que quien sale puede cantar antes o después de echar su carta. Cantar ya revela que se tienen la Sota y el Rey, así que "enseñar las cartas" no requiere nada más. Dos puntos que el texto no dice y el motor decide (⚠️ pendiente de confirmar): un palo ya cantado no se puede volver a cantar en la misma partida, y el **Tute** se canta en el mismo momento que los cantes (tras ganar baza su pareja), no en cualquier momento.
-- **Cambio del siete:** ⚠️ todavía no implementado, pendiente de decidir cómo encaja con el robo automático; ver `pbi-03-cantes`.
+- **Cambio del siete:** como el robo es automático, el momento "antes de robar" se resuelve así:
+  - Tras las bazas 1 a 3, quien tenga el 7 de triunfo en la pareja que ganó la baza puede enviar `cambiar_siete` cuando quiera, aunque no sea su turno, hasta que se cierre la baza siguiente. La partida no se para.
+  - Tras la 4ª baza, en el último robo, la pinta se la lleva un rival del ganador. Si alguien de la pareja ganadora tiene el 7 de triunfo, el robo **espera** a que decida (`cambiar_siete` o `no_cambiar_siete`); mientras tanto no se juega carta, aunque sí se puede cantar. `estado_partida` indica quién tiene que decidir en `esperando_cambio_siete` (o `-1`).
+  - Con esto no hace falta la regla de "si la pinta le tocaría al compañero se pierde el derecho": en el último robo la pinta siempre va a un rival del ganador, y solo la pareja ganadora puede cambiar.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
-- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`), el arrastre (`pbi-03-fase-arrastre`) y los cantes con el Tute (`pbi-03-cantes`) están implementados. Falta el cambio del siete y el tanteo con las vueltas (`pbi-03-tanteo-y-fin-partida`). `calcular_resultado` ya separa `puntos_cartas` (con las diez últimas) de `puntos_cantes`, que es lo que necesita la regla de los 30 tantos sin cantes. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
+- **Estado por subtareas:** el reparto, las bazas con robada (`pbi-03-reparto-y-robo`), el arrastre (`pbi-03-fase-arrastre`) y los cantes con el Tute y el cambio del siete (`pbi-03-cantes`) están implementados. Falta el tanteo con las vueltas (`pbi-03-tanteo-y-fin-partida`). `calcular_resultado` ya separa `puntos_cartas` (con las diez últimas) de `puntos_cantes`, que es lo que necesita la regla de los 30 tantos sin cantes. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
 
 ---
 

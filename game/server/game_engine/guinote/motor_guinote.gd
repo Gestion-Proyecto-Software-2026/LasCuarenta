@@ -4,7 +4,7 @@ extends MotorDeJuego
 ##
 ## Implementado: reparto, triunfo, las 4 bazas "con robada" (juego libre), el
 ## robo tras cada baza, las 6 bazas de arrastre con sus obligaciones, los
-## cantes (20 y las 40) y el Tute. Pendiente: cambio del siete y tanteo
+## cantes (20 y las 40), el Tute y el cambio del siete. Pendiente: tanteo
 ## completo con vueltas (pbi-03-tanteo-y-fin-partida). Hasta entonces no se
 ## registra en MOTORES de main_server.gd.
 
@@ -20,6 +20,7 @@ const PUNTOS := {1: 11, 3: 10, 12: 4, 10: 3, 11: 2}
 const PUNTOS_ULTIMA_BAZA := 10
 const PUNTOS_CANTE_TRIUNFO := 40
 const PUNTOS_CANTE := 20
+const SIETE := 7
 const SOTA := 10
 const REY := 12
 ## Figuras con las que se canta Tute en Guiñote (en el Tute son caballos o reyes).
@@ -59,6 +60,14 @@ func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary
 	var validas: Array[Dictionary] = []
 	if ha_terminado(e):
 		return validas
+	if e.siete_pendiente != -1:
+		# El último robo espera a que decida quien tiene el 7 de triunfo; mientras,
+		# no se juega carta (sí se puede cantar).
+		if jugador_id == e.siete_pendiente:
+			validas.append({"tipo": MensajesRed.CAMBIAR_SIETE})
+			validas.append({"tipo": MensajesRed.NO_CAMBIAR_SIETE})
+		validas.append_array(_cantes_posibles(e, jugador_id))
+		return validas
 	if jugador_id == e.turno:
 		var permitidas: Array = e.manos[jugador_id]
 		if e.fase == EstadoGuinote.Fase.ARRASTRE:
@@ -66,9 +75,21 @@ func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary
 		# En la fase de robo, cualquier carta de la mano, sin obligación de asistir.
 		for carta: Carta in permitidas:
 			validas.append({"tipo": MensajesRed.JUGAR_CARTA, "carta_id": carta.id})
-	# Cantar no depende del turno: puede hacerlo cualquiera de la pareja que ganó la baza.
+	# Cambiar el siete y cantar no dependen del turno: puede hacerlo cualquiera de
+	# la pareja que ganó la última baza.
+	if puede_cambiar_siete(e, jugador_id):
+		validas.append({"tipo": MensajesRed.CAMBIAR_SIETE})
 	validas.append_array(_cantes_posibles(e, jugador_id))
 	return validas
+
+
+## Si [param jugador_id] puede cambiar el 7 de triunfo por la pinta: la pinta
+## sigue en la mesa, tiene el 7 y su pareja ganó la última baza. El derecho dura
+## hasta que se cierra la baza siguiente (§8).
+static func puede_cambiar_siete(e: EstadoGuinote, jugador_id: int) -> bool:
+	return e.pinta != null and not e.ultima_baza.is_empty() \
+		and equipo_de(e.ultima_baza["ganador"]) == equipo_de(jugador_id) \
+		and _tiene(e.manos[jugador_id], e.palo_triunfo, SIETE)
 
 
 ## Cantes que puede hacer [param jugador_id] ahora mismo. Hace falta que su
@@ -172,6 +193,24 @@ func _ejecutar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary
 			e.tute = {"jugador_id": jugador_id, "figura": jugada["figura"]}
 		MensajesRed.JUGAR_CARTA:
 			_jugar_carta(e, jugador_id, jugada["carta_id"])
+		MensajesRed.CAMBIAR_SIETE:
+			_cambiar_siete(e, jugador_id)
+			if e.siete_pendiente == jugador_id:
+				_terminar_robo(e)
+		MensajesRed.NO_CAMBIAR_SIETE:
+			_terminar_robo(e)
+
+
+## El 7 de triunfo pasa a ser la pinta (y se robará el último) y el jugador se
+## queda la que había.
+func _cambiar_siete(e: EstadoGuinote, jugador_id: int) -> void:
+	var mano: Array = e.manos[jugador_id]
+	for i in mano.size():
+		if mano[i].palo == e.palo_triunfo and mano[i].valor == SIETE:
+			var siete: Carta = mano[i]
+			mano[i] = e.pinta
+			e.pinta = siete
+			return
 
 
 func _jugar_carta(e: EstadoGuinote, jugador_id: int, carta_id: String) -> void:
@@ -199,10 +238,26 @@ func _cerrar_baza(e: EstadoGuinote) -> void:
 	e.bazas_jugadas += 1
 	e.turno = ganador  # quien gana la baza sale en la siguiente
 
-	if e.fase == EstadoGuinote.Fase.ROBO:
-		_robar(e, ganador)
-		if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
-			e.fase = EstadoGuinote.Fase.ARRASTRE
+	if e.fase != EstadoGuinote.Fase.ROBO:
+		return
+	if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
+		# Último robo: la pinta se la llevará un rival del ganador. Antes, quien
+		# tenga el 7 de triunfo en la pareja ganadora decide si lo cambia.
+		for i: int in [0, 2]:
+			var companero: int = (ganador + i) % NUM_JUGADORES
+			if puede_cambiar_siete(e, companero):
+				e.siete_pendiente = companero
+				return
+	_terminar_robo(e)
+
+
+## Roba todo el mundo tras la baza que se acaba de cerrar y, si era la última
+## con robada, empieza el arrastre.
+func _terminar_robo(e: EstadoGuinote) -> void:
+	e.siete_pendiente = -1
+	_robar(e, e.ultima_baza["ganador"])
+	if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
+		e.fase = EstadoGuinote.Fase.ARRASTRE
 
 
 ## Cada jugador roba una carta, empezando por el ganador de la baza y en el
@@ -317,6 +372,7 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"cantes": e.cantes.map(func(c: Dictionary) -> Dictionary: return {
 			"jugador_id": c["jugador_id"], "palo": nombre_palo(c["palo"]), "puntos": c["puntos"]}),
 		"tute": e.tute.duplicate(),
+		"esperando_cambio_siete": e.siete_pendiente,
 	}
 
 

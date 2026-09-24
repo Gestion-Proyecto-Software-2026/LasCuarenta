@@ -100,19 +100,20 @@ func _motor(semilla: int) -> MotorGuinote:
 	return MotorGuinote.new(rng)
 
 
-## Juega una partida entera eligiendo al azar entre las jugadas válidas del
-## jugador en turno (cartas y cantes) y comprueba por el camino que nunca se
-## queda sin jugada posible.
+## Juega una partida entera eligiendo al azar entre las jugadas válidas de
+## quien tiene que actuar (cartas, cantes y cambio del siete) y comprueba por el
+## camino que nunca se queda sin jugada posible.
 func _partida_al_azar(motor: MotorGuinote, rng: RandomNumberGenerator) -> EstadoGuinote:
 	var e := motor.iniciar(4) as EstadoGuinote
 	for paso in 200:
 		if motor.ha_terminado(e):
 			break
-		var validas := motor.jugadas_validas(e, e.turno)
-		assert_false(validas.is_empty(), "el jugador %d se ha quedado sin jugadas (baza %d)" % [e.turno, e.bazas_jugadas + 1])
+		var actua := e.siete_pendiente if e.siete_pendiente != -1 else e.turno
+		var validas := motor.jugadas_validas(e, actua)
+		assert_false(validas.is_empty(), "el jugador %d se ha quedado sin jugadas (baza %d)" % [actua, e.bazas_jugadas + 1])
 		if validas.is_empty():
 			break
-		var resultado := motor.aplicar_jugada(e, e.turno, validas[rng.randi_range(0, validas.size() - 1)])
+		var resultado := motor.aplicar_jugada(e, actua, validas[rng.randi_range(0, validas.size() - 1)])
 		assert_true(resultado.ok, resultado.error)
 		e = resultado.estado
 	return e
@@ -145,6 +146,9 @@ func test_en_arrastre_se_rechaza_una_carta_no_permitida() -> void:
 		var motor := _motor(semilla)
 		var e := motor.iniciar(4) as EstadoGuinote
 		while not motor.ha_terminado(e):
+			if e.siete_pendiente != -1:
+				e = motor.aplicar_jugada(e, e.siete_pendiente, {"tipo": "no_cambiar_siete"}).estado
+				continue
 			var validas := motor.jugadas_validas(e, e.turno).filter(func(j: Dictionary) -> bool:
 				return j["tipo"] == MensajesRed.JUGAR_CARTA)
 			if e.fase == EstadoGuinote.Fase.ARRASTRE and validas.size() < e.manos[e.turno].size():
