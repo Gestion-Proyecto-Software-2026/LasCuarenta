@@ -3,10 +3,10 @@ extends MotorDeJuego
 ## Motor de reglas del Guiñote (analisis_funcional_app.md §8).
 ##
 ## Implementado: reparto, triunfo, las 4 bazas "con robada" (juego libre), el
-## robo tras cada baza y las 6 bazas de arrastre con sus obligaciones.
-## Pendiente en las otras subtareas de PBI-03: cantes y cambio del siete
-## (pbi-03-cantes) y tanteo completo con vueltas (pbi-03-tanteo-y-fin-partida).
-## Hasta entonces no se registra en MOTORES de main_server.gd.
+## robo tras cada baza, las 6 bazas de arrastre con sus obligaciones, los
+## cantes (20 y las 40) y el Tute. Pendiente: cambio del siete y tanteo
+## completo con vueltas (pbi-03-tanteo-y-fin-partida). Hasta entonces no se
+## registra en MOTORES de main_server.gd.
 
 const NUM_JUGADORES := 4
 const CARTAS_POR_TANDA := 3
@@ -18,6 +18,12 @@ const ORDEN_DE_FUERZA: Array[int] = [1, 3, 12, 10, 11, 7, 6, 5, 4, 2]
 ## Valor en tantos de cada carta; las que no aparecen valen 0.
 const PUNTOS := {1: 11, 3: 10, 12: 4, 10: 3, 11: 2}
 const PUNTOS_ULTIMA_BAZA := 10
+const PUNTOS_CANTE_TRIUNFO := 40
+const PUNTOS_CANTE := 20
+const SOTA := 10
+const REY := 12
+## Figuras con las que se canta Tute en Guiñote (en el Tute son caballos o reyes).
+const FIGURAS_TUTE := {"sotas": SOTA, "reyes": REY}
 
 
 func jugadores_admitidos() -> Array[int]:
@@ -51,15 +57,55 @@ func _iniciar(_num_jugadores: int) -> EstadoPartida:
 func jugadas_validas(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary]:
 	var e := estado as EstadoGuinote
 	var validas: Array[Dictionary] = []
-	if ha_terminado(e) or jugador_id != e.turno:
+	if ha_terminado(e):
 		return validas
-	var permitidas: Array = e.manos[jugador_id]
-	if e.fase == EstadoGuinote.Fase.ARRASTRE:
-		permitidas = cartas_permitidas_en_arrastre(e.manos[jugador_id], e.baza_actual, e.palo_triunfo, jugador_id)
-	# En la fase de robo, cualquier carta de la mano, sin obligación de asistir.
-	for carta: Carta in permitidas:
-		validas.append({"tipo": MensajesRed.JUGAR_CARTA, "carta_id": carta.id})
+	if jugador_id == e.turno:
+		var permitidas: Array = e.manos[jugador_id]
+		if e.fase == EstadoGuinote.Fase.ARRASTRE:
+			permitidas = cartas_permitidas_en_arrastre(e.manos[jugador_id], e.baza_actual, e.palo_triunfo, jugador_id)
+		# En la fase de robo, cualquier carta de la mano, sin obligación de asistir.
+		for carta: Carta in permitidas:
+			validas.append({"tipo": MensajesRed.JUGAR_CARTA, "carta_id": carta.id})
+	# Cantar no depende del turno: puede hacerlo cualquiera de la pareja que ganó la baza.
+	validas.append_array(_cantes_posibles(e, jugador_id))
 	return validas
+
+
+## Cantes que puede hacer [param jugador_id] ahora mismo. Hace falta que su
+## pareja haya ganado la última baza y que ningún rival haya jugado todavía en
+## la baza siguiente (§8).
+func _cantes_posibles(e: EstadoGuinote, jugador_id: int) -> Array[Dictionary]:
+	var cantes: Array[Dictionary] = []
+	if not ventana_de_cante_abierta(e, jugador_id):
+		return cantes
+	var mano: Array = e.manos[jugador_id]
+	if e.ultimo_cante_de[jugador_id] != e.bazas_jugadas:
+		var cantados := e.cantes.map(func(c: Dictionary) -> Carta.Palo: return c["palo"])
+		for palo: Carta.Palo in Carta.Palo.values():
+			if palo not in cantados and _tiene(mano, palo, SOTA) and _tiene(mano, palo, REY):
+				cantes.append({"tipo": MensajesRed.CANTAR, "palo": nombre_palo(palo)})
+	for figura: String in FIGURAS_TUTE:
+		if mano.filter(func(c: Carta) -> bool: return c.valor == FIGURAS_TUTE[figura]).size() == 4:
+			cantes.append({"tipo": MensajesRed.CANTAR_TUTE, "figura": figura})
+	return cantes
+
+
+## Si [param jugador_id] está en el momento de poder cantar: su pareja acaba de
+## ganar la última baza y en la baza en curso solo ha jugado, como mucho, su
+## propia pareja (quien ganó sale primero; en cuanto juega un rival, se cierra).
+static func ventana_de_cante_abierta(e: EstadoGuinote, jugador_id: int) -> bool:
+	if e.ultima_baza.is_empty() or equipo_de(e.ultima_baza["ganador"]) != equipo_de(jugador_id):
+		return false
+	return e.baza_actual.all(func(j: Dictionary) -> bool:
+		return equipo_de(j["jugador_id"]) == equipo_de(jugador_id))
+
+
+static func _tiene(mano: Array, palo: Carta.Palo, valor: int) -> bool:
+	return mano.any(func(c: Carta) -> bool: return c.palo == palo and c.valor == valor)
+
+
+static func nombre_palo(palo: Carta.Palo) -> String:
+	return (Carta.Palo.keys()[palo] as String).to_lower()
 
 
 ## Cartas de [param mano] que [param jugador_id] puede jugar en una baza de
@@ -80,7 +126,8 @@ static func cartas_permitidas_en_arrastre(mano: Array, baza: Array[Dictionary],
 
 	var del_palo := mano.filter(func(c: Carta) -> bool: return c.palo == palo_salida)
 	if not del_palo.is_empty():
-		var alguien_ha_fallado := palo_salida != palo_triunfo 			and baza.any(func(j: Dictionary) -> bool: return j["carta"].palo == palo_triunfo)
+		var alguien_ha_fallado := palo_salida != palo_triunfo \
+			and baza.any(func(j: Dictionary) -> bool: return j["carta"].palo == palo_triunfo)
 		if alguien_ha_fallado:
 			return del_palo
 		var mas_alta := _mas_alta(baza, func(j: Dictionary) -> bool: return j["carta"].palo == palo_salida)
@@ -115,10 +162,23 @@ static func _las_que_superan(candidatas: Array, rival: Carta, si_ninguna: Array)
 
 func _ejecutar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> void:
 	var e := estado as EstadoGuinote
+	match jugada["tipo"]:
+		MensajesRed.CANTAR:
+			var palo := Carta.Palo.keys().find((jugada["palo"] as String).to_upper()) as Carta.Palo
+			var puntos := PUNTOS_CANTE_TRIUNFO if palo == e.palo_triunfo else PUNTOS_CANTE
+			e.cantes.append({"jugador_id": jugador_id, "palo": palo, "puntos": puntos})
+			e.ultimo_cante_de[jugador_id] = e.bazas_jugadas
+		MensajesRed.CANTAR_TUTE:
+			e.tute = {"jugador_id": jugador_id, "figura": jugada["figura"]}
+		MensajesRed.JUGAR_CARTA:
+			_jugar_carta(e, jugador_id, jugada["carta_id"])
+
+
+func _jugar_carta(e: EstadoGuinote, jugador_id: int, carta_id: String) -> void:
 	var mano: Array = e.manos[jugador_id]
 	var carta: Carta = null
 	for i in mano.size():
-		if mano[i].id == jugada["carta_id"]:
+		if mano[i].id == carta_id:
 			carta = mano[i]
 			mano.remove_at(i)
 			break
@@ -186,26 +246,41 @@ static func puntos_de(carta: Carta) -> int:
 	return PUNTOS.get(carta.valor, 0)
 
 
+## Termina al cantar Tute o al jugarse las 10 bazas. Provisional: las vueltas
+## llegan con pbi-03-tanteo-y-fin-partida.
 func ha_terminado(estado: EstadoPartida) -> bool:
-	# Provisional: el Tute (victoria inmediata) y las vueltas llegan con
-	# pbi-03-cantes y pbi-03-tanteo-y-fin-partida.
-	return (estado as EstadoGuinote).bazas_jugadas >= EstadoGuinote.BAZAS_POR_PARTIDA
+	var e := estado as EstadoGuinote
+	return not e.tute.is_empty() or e.bazas_jugadas >= EstadoGuinote.BAZAS_POR_PARTIDA
 
 
-## Provisional hasta pbi-03-tanteo-y-fin-partida: solo cuenta el valor de las
-## cartas ganadas y las diez últimas; faltan los cantes y las reglas de §8
-## (superar 100, mínimo de 30 sin cantes, vueltas).
+## Si alguien cantó Tute, gana su pareja. Si no, provisional hasta
+## pbi-03-tanteo-y-fin-partida: gana quien más tantos tenga, sin las reglas de
+## superar 100, el mínimo de 30 sin cantes ni las vueltas (§8).
+## Además de los campos del contrato devuelve el desglose, que el tanteo necesita:
+## [code]puntos_cartas[/code] (con las diez últimas), [code]puntos_cantes[/code]
+## y [code]motivo[/code] ("tute" o "tantos").
 func calcular_resultado(estado: EstadoPartida) -> Dictionary:
 	var e := estado as EstadoGuinote
-	var puntos: Array[int] = [0, 0]
+	var cartas: Array[int] = [0, 0]
 	for equipo in 2:
 		for carta: Carta in e.cartas_ganadas[equipo]:
-			puntos[equipo] += puntos_de(carta)
+			cartas[equipo] += puntos_de(carta)
 	if e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA and not e.ultima_baza.is_empty():
-		puntos[equipo_de(e.ultima_baza["ganador"])] += PUNTOS_ULTIMA_BAZA
+		cartas[equipo_de(e.ultima_baza["ganador"])] += PUNTOS_ULTIMA_BAZA
+	var cantes: Array[int] = [0, 0]
+	for cante: Dictionary in e.cantes:
+		cantes[equipo_de(cante["jugador_id"])] += cante["puntos"]
+	var total: Array[int] = [cartas[0] + cantes[0], cartas[1] + cantes[1]]
+
+	var ganador := 0 if total[0] >= total[1] else 1
+	if not e.tute.is_empty():
+		ganador = equipo_de(e.tute["jugador_id"])
 	return {
-		"equipo_ganador": 0 if puntos[0] >= puntos[1] else 1,
-		"puntos_por_equipo": puntos,
+		"equipo_ganador": ganador,
+		"puntos_por_equipo": total,
+		"puntos_cartas": cartas,
+		"puntos_cantes": cantes,
+		"motivo": "tute" if not e.tute.is_empty() else "tantos",
 	}
 
 
@@ -227,7 +302,7 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"fase": "robo" if e.fase == EstadoGuinote.Fase.ROBO else "arrastre",
 		"dador": e.dador,
 		"turno": e.turno,
-		"palo_triunfo": (Carta.Palo.keys()[e.palo_triunfo] as String).to_lower(),
+		"palo_triunfo": nombre_palo(e.palo_triunfo),
 		"pinta": pinta,
 		"cartas_en_mazo": e.mazo.size() + (1 if e.pinta != null else 0),
 		"mi_mano": _ids(e.manos[jugador_id]),
@@ -239,6 +314,9 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		},
 		"bazas_por_equipo": bazas_por_equipo,
 		"bazas_jugadas": e.bazas_jugadas,
+		"cantes": e.cantes.map(func(c: Dictionary) -> Dictionary: return {
+			"jugador_id": c["jugador_id"], "palo": nombre_palo(c["palo"]), "puntos": c["puntos"]}),
+		"tute": e.tute.duplicate(),
 	}
 
 
