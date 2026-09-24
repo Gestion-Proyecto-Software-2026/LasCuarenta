@@ -99,9 +99,11 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 | GET | `/ranking?juego=guinote` | `200 [{ usuario_id, nombre_visible, puntos_totales, posicion }]` |
 
 ### Interno (solo lo llama el servidor de partida, con secreto compartido servidor-a-servidor, nunca el cliente)
-| Método | Ruta | Body |
-|---|---|---|
-| POST | `/interno/partidas` | `{ sala_id, resultado: { equipos: [...], puntos: [...] } }` |
+| Método | Ruta | Cabecera | Body |
+|---|---|---|---|
+| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, resultado: { equipos: [...], puntos: [...] } }` |
+
+El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X-Internal-Secret` no coincida con la variable de entorno `INTERNAL_API_SECRET` (definida en `backend/.env.example` y en `docker-compose.yml`). El servidor de partida debe leer el mismo valor de su propia configuración — no es JWT de usuario, es un secreto fijo compartido entre los dos procesos.
 
 ---
 

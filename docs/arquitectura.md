@@ -94,7 +94,7 @@ En `game/server/`, `main_server.gd` es el punto de entrada headless (abre el `EN
 
 - **Cliente ↔ Backend (REST):** cifrado (HTTPS vía nginx), porque viajan credenciales de login. Autenticación por JWT en `Authorization: Bearer <token>` en todas las rutas salvo registro/login/listado de salas/ranking (ver `analisis_funcional_app.md` §5).
 - **Cliente ↔ Servidor de partida (ENet/UDP):** sin TLS — decisión de equipo, ya que es un juego por turnos y no hay credenciales viajando por ese canal (la identidad ya se valida en `unirse_partida` con el token obtenido del login).
-- **Servidor de partida ↔ Backend (HTTP interno):** ruta `POST /interno/partidas`, protegida por un secreto compartido servidor-a-servidor (no JWT de usuario). Solo la invoca el servidor de partida, nunca el cliente — este secreto todavía no está definido como variable de entorno en `docker-compose.yml`/`.env.example` y hay que añadirlo antes de implementar la ruta.
+- **Servidor de partida ↔ Backend (HTTP interno):** ruta `POST /interno/partidas`, protegida por un secreto compartido servidor-a-servidor (no JWT de usuario) mandado en la cabecera `X-Internal-Secret`. Solo la invoca el servidor de partida, nunca el cliente. El secreto vive en la variable de entorno `INTERNAL_API_SECRET` (ya definida en `backend/.env.example` y `docker-compose.yml`); el servidor de partida debe leer el mismo valor de su propia configuración cuando se implemente esa llamada.
 - **Contraseñas:** cifradas con `bcrypt` antes de guardarse (`usuarios.password_hash`).
 - El backend no confía en ningún dato de estado de partida que no venga de esa ruta interna — el backend no valida reglas de juego, solo persiste lo que le informa el servidor de partida.
 
