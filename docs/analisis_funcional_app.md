@@ -247,6 +247,13 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 
 **Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — no aplica directamente aquí porque el cliente no ofrece ningún canal de voz o chat libre entre compañeros durante la jugada; si en el futuro PBI-08 añadiera chat de equipo también durante la partida en curso, habría que revisar si conviene restringirlo por este motivo.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
 
+**Notas de implementación (`game/server/game_engine/guinote/`).** Cómo se traduce lo anterior al motor:
+- **Asientos y sentido de juego:** los asientos se numeran en el orden en que se juega (antihorario). "A la derecha" de `p` es `(p + 1) % 4` y "a la izquierda", `(p + 3) % 4`; las parejas quedan 0-2 contra 1-3, como en §7.
+- **Reparto:** el dador se sortea con el generador aleatorio del motor. No hay corte: con la baraja mezclada al azar no cambia nada.
+- **Robo automático:** al cerrarse cada una de las 4 primeras bazas, el servidor reparte la carta de cada jugador en el orden de robo (el ganador primero); nadie tiene que pedirla. La pinta la roba el último al que le toque en la 4ª baza.
+- **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
+- **Estado por subtareas:** el reparto y las bazas con robada están implementados (`pbi-03-reparto-y-robo`). Las obligaciones del arrastre, los cantes con el cambio del siete, y el tanteo con las vueltas llegan en `pbi-03-fase-arrastre`, `pbi-03-cantes` y `pbi-03-tanteo-y-fin-partida`. Hasta que estén todas, el motor no se registra en `MOTORES` de `main_server.gd`.
+
 ---
 
 ## 9. Reglas funcionales — Mus (PBI-04, prioridad media)
