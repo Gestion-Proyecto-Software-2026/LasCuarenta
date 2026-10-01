@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://bjxdgjqfmbfkg"]
+
+[ext_resource type="Texture2D" uid="uid://b3jcgr8q3thpk" path="res://data/imagenes_cartas/seis_espadas.png" id="1_wt2gs"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_med4s"]
+
+[resource]
+script = ExtResource("2_med4s")
+id = "Seis_espadas"
+palo = 2
+valor = 6
+imagen = ExtResource("1_wt2gs")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"
