@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cartas
+      POSTGRES_PASSWORD: cartas_dev_password
+      POSTGRES_DB: cartas_online
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # PostgreSQL ejecuta estos scripts solo al crear la base de datos (volumen
+      # vacío). Con un volumen ya creado, las migraciones nuevas se aplican a mano.
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://cartas:cartas_dev_password@db:5432/cartas_online
+      JWT_SECRET: cambia_esto_en_produccion
+      # Secreto servidor-a-servidor para POST /interno/partidas — lo debe conocer
+      # también el servidor de partida (fuera de este compose, ver docs/arquitectura.md §5).
+      INTERNAL_API_SECRET: cambia_esto_tambien_en_produccion
+      # Dirección del servidor de partida que se entrega al cliente como servidor_direccion.
+      # El servidor de partida corre fuera de Compose, en la máquina anfitriona.
+      GAME_SERVER_ADDRESS: localhost:9000
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
