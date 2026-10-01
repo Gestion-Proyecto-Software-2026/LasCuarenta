@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://b1165265ysu1c"]
+
+[ext_resource type="Script" uid="uid://ueacdryk0lxs" path="res://test/main_test.gd" id="1_plck6"]
+[ext_resource type="PackedScene" uid="uid://iqjltih46rns" path="res://test/Tapete.tscn" id="2_7otsb"]
+[ext_resource type="Script" uid="uid://b85dipmjsrecr" path="res://test/game_master/juego_guiñote.gd" id="3_rp86j"]
+
+[node name="MainTest" type="Node" unique_id=239065177]
+script = ExtResource("1_plck6")
+
+[node name="botones holder" type="Control" parent="." unique_id=1510392395]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="server" type="Button" parent="botones holder" unique_id=83841128]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5477431
+anchor_top = 0.39814815
+anchor_right = 0.87305886
+anchor_bottom = 0.58933467
+text = "SER SERVIDOR"
+metadata/_edit_use_anchors_ = true
+
+[node name="client" type="Button" parent="botones holder" unique_id=1689548557]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.1328125
+anchor_top = 0.39660493
+anchor_right = 0.44597563
+anchor_bottom = 0.5877914
+offset_bottom = 3.0517578e-05
+text = "SER CLIENTE"
+metadata/_edit_use_anchors_ = true
+
+[node name="Tapete" parent="." unique_id=1342162523 instance=ExtResource("2_7otsb")]
+visible = false
+
+[node name="juego_guiñote" type="Node" parent="." unique_id=1929326364]
+script = ExtResource("3_rp86j")
+cartas_repartir_inicio = null
+metadata/_custom_type_script = "uid://b85dipmjsrecr"
+
+[connection signal="pressed" from="botones holder/server" to="." method="_on_server_pressed"]
+[connection signal="pressed" from="botones holder/client" to="." method="_on_client_pressed"]
