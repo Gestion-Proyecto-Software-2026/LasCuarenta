@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://n5cti57ttoub"]
+
+[ext_resource type="Texture2D" uid="uid://dcswf2af247a4" path="res://data/imagenes_cartas/Rey_espadas.png" id="1_yhyga"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_dpwjm"]
+
+[resource]
+script = ExtResource("2_dpwjm")
+id = "Rey_espadas"
+palo = 2
+valor = 12
+imagen = ExtResource("1_yhyga")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"

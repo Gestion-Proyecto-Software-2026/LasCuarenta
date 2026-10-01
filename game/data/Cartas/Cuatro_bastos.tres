@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://4qrybrtn47ik"]
+
+[ext_resource type="Texture2D" uid="uid://ci4hoawu76yoc" path="res://data/imagenes_cartas/cuatro_bastos.png" id="1_kl2ha"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_td2t5"]
+
+[resource]
+script = ExtResource("2_td2t5")
+id = "Cuatro_bastos"
+palo = 3
+valor = 4
+imagen = ExtResource("1_kl2ha")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"

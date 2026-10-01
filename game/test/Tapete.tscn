@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://iqjltih46rns"]
+
+[ext_resource type="Script" uid="uid://dbwbjtmmwt3t3" path="res://test/tapete.gd" id="1_wxlmx"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_42687"]
+size = Vector2(1044, 98)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vawjc"]
+size = Vector2(296, 133)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_4n7nk"]
+size = Vector2(57, 65)
+
+[sub_resource type="LabelSettings" id="LabelSettings_42687"]
+font_size = 28
+
+[node name="Tapete" type="Control" unique_id=1342162523]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_wxlmx")
+
+[node name="mano" type="Control" parent="." unique_id=203643328]
+layout_mode = 1
+anchor_top = 0.7006173
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -3.0517578e-05
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="area_mano" type="Area2D" parent="mano" unique_id=1372650850]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="mano/area_mano" unique_id=631037354]
+position = Vector2(569, 135)
+shape = SubResource("RectangleShape2D_42687")
+
+[node name="centro_tapete" type="Control" parent="." unique_id=103851837]
+layout_mode = 1
+anchor_left = 0.24479167
+anchor_top = 0.26234567
+anchor_right = 0.7785556
+anchor_bottom = 0.6399876
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="area_mesa" type="Area2D" parent="centro_tapete" unique_id=140188575]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="centro_tapete/area_mesa" unique_id=1452787782]
+position = Vector2(298.448, 82.5)
+shape = SubResource("RectangleShape2D_vawjc")
+
+[node name="mano_oponente" type="Control" parent="." unique_id=32622885]
+layout_mode = 1
+anchor_top = 0.009259306
+anchor_right = 1.0
+anchor_bottom = 0.30864197
+offset_top = -3.0517578e-05
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+metadata/_edit_use_anchors_ = true
+
+[node name="mazo" type="Control" parent="." unique_id=1029661452]
+anchors_preset = 0
+offset_left = 138.0
+offset_top = 189.0
+offset_right = 178.0
+offset_bottom = 229.0
+
+[node name="area_mazo" type="Area2D" parent="mazo" unique_id=256385756]
+position = Vector2(-11, -3)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="mazo/area_mazo" unique_id=125360383]
+position = Vector2(29, 29)
+shape = SubResource("RectangleShape2D_4n7nk")
+
+[node name="Label" type="Label" parent="." unique_id=440291232]
+layout_mode = 0
+offset_left = 546.0
+offset_top = 9.0
+offset_right = 586.0
+offset_bottom = 32.0
+text = "Tu turno"
+label_settings = SubResource("LabelSettings_42687")
+
+[node name="centro_carta_oponente" type="Control" parent="." unique_id=775300098]
+anchors_preset = 0
+offset_left = 786.0
+offset_top = 135.0
+offset_right = 826.0
+offset_bottom = 175.0
+
+[connection signal="area_entered" from="mano/area_mano" to="." method="_on_area_mano_area_entered"]
+[connection signal="area_exited" from="mano/area_mano" to="." method="_on_area_mano_area_exited"]
+[connection signal="area_entered" from="centro_tapete/area_mesa" to="." method="_on_area_mesa_area_entered"]
+[connection signal="area_exited" from="centro_tapete/area_mesa" to="." method="_on_area_mesa_area_exited"]
