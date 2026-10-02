@@ -29,6 +29,15 @@ services:
       # El servidor de partida corre fuera de Compose, en la máquina anfitriona.
       GAME_SERVER_ADDRESS: localhost:9000
       PORT: 3000
+      BCRYPT_SALT_ROUNDS: 10
+      JWT_EXPIRES_IN: 24h
+      # SMTP de pruebas para POST /auth/recuperar (ver backend/.env.example).
+      # Sustituid por un SMTP real (o uno de pruebas como Mailtrap/Ethereal) para probar el envío.
+      SMTP_HOST: localhost
+      SMTP_PORT: 587
+      SMTP_SECURE: "false"
+      SMTP_FROM: no-reply@cartas-online.local
+      RECOVERY_CODE_TTL_MIN: 15
     ports:
       - "3000:3000"
 

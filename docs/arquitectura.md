@@ -77,6 +77,7 @@ En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload
 | Backend | Node.js + Express | `backend/src/app.js` |
 | Base de datos | PostgreSQL 16 | Extensión `pgcrypto` para `gen_random_uuid()` (`migrations/001_init.sql`) |
 | Autenticación | JWT (`jsonwebtoken`) + `bcrypt` para contraseñas | Verificado en `backend/src/middleware/auth.js` |
+| Envío de correo | `nodemailer` (SMTP) | Solo para `POST /auth/recuperar`; credenciales en `SMTP_*` (`backend/.env.example`) |
 | Proxy inverso / TLS | nginx + Let's Encrypt (Certbot) | Solo delante del backend REST (`infra/nginx/nginx.conf`) |
 | Orquestación local/dev | Docker Compose | Levanta `db` + `backend` (`docker-compose.yml`); el cliente y el servidor de partida se ejecutan fuera de Compose (Godot no está dockerizado en este repo) |
 

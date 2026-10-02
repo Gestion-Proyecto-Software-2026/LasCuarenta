@@ -1,0 +1,531 @@
+openapi: 3.0.3
+info:
+  title: Cartas Online — Backend REST
+  version: 0.1.0
+  description: >
+    API transaccional (cuentas, lobby, historial, ranking) del proyecto Cartas Online.
+    El contrato detallado y las decisiones de producto viven en
+    `docs/analisis_funcional_app.md` §5 — este documento es su traducción a OpenAPI
+    para explorar y probar la API desde Swagger UI (`/api/docs`); si cambia un
+    contrato se actualizan los dos en el mismo PR.
+    Los endpoints marcados con ⚠️ **pendiente de implementar** responden hoy `501`.
+servers:
+  - url: http://localhost:3000/api
+    description: Desarrollo local (npm run dev / docker compose)
+tags:
+  - name: Autenticación
+    description: PBI-01
+  - name: Lobby
+    description: PBI-02, PBI-09
+  - name: Historial y ranking
+    description: PBI-06, PBI-07
+  - name: Interno
+    description: Solo lo llama el servidor de partida, nunca el cliente (secreto compartido)
+  - name: Sistema
+
+security: []
+
+paths:
+  /auth/registro:
+    post:
+      tags: [Autenticación]
+      summary: Crea una cuenta nueva
+      description: >
+        `password_hash` es el SHA-256 de la contraseña en texto plano, en hexadecimal
+        (64 caracteres), calculado por el cliente — el backend nunca recibe la
+        contraseña en claro, y aplica además `bcrypt` sobre ese hash antes de guardarlo.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistroRequest"
+            example:
+              email: ana@example.com
+              password_hash: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a1"
+              nombre_visible: Ana
+      responses:
+        "201":
+          description: Cuenta creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usuario"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "409":
+          description: El correo ya está registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Inicia sesión y devuelve un JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Credenciales válidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/recuperar:
+    post:
+      tags: [Autenticación]
+      summary: Solicita un código de recuperación de contraseña por correo
+      description: >
+        Responde siempre `200` con el mismo mensaje genérico, exista o no esa cuenta,
+        para no filtrar qué correos están registrados. Si existe, genera un código
+        numérico de 6 cifras (válido `RECOVERY_CODE_TTL_MIN` minutos, de un solo uso)
+        y lo envía por correo.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Mensaje genérico (exista o no el correo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mensaje"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+
+  /auth/restablecer:
+    post:
+      tags: [Autenticación]
+      summary: Fija una contraseña nueva a partir del código de recuperación
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestablecerRequest"
+      responses:
+        "200":
+          description: Contraseña actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mensaje"
+        "400":
+          description: Datos inválidos, o código inválido/caducado/ya usado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /salas:
+    get:
+      tags: [Lobby]
+      summary: Lista las salas disponibles
+      description: "⚠️ Pendiente de implementar (responde 501)."
+      security: []
+      parameters:
+        - name: juego
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Juego"
+      responses:
+        "200":
+          description: Salas existentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Sala"
+    post:
+      tags: [Lobby]
+      summary: Crea una sala nueva
+      description: "⚠️ Pendiente de implementar (responde 501)."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [juego]
+              properties:
+                juego:
+                  $ref: "#/components/schemas/Juego"
+      responses:
+        "201":
+          description: Sala creada, con la dirección del servidor de partida
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Sala"
+                  - type: object
+                    properties:
+                      servidor_direccion:
+                        type: string
+                        example: localhost:9000
+
+  /salas/{id}/unirse:
+    post:
+      tags: [Lobby]
+      summary: Une al usuario autenticado a una sala
+      description: "⚠️ Pendiente de implementar (responde 501)."
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      responses:
+        "200":
+          description: Sala actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sala"
+
+  /salas/{id}/expulsar:
+    post:
+      tags: [Lobby]
+      summary: Expulsa a un jugador de la sala (solo el creador)
+      description: "⚠️ Pendiente de implementar (responde 501). PBI-09."
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [usuario_id]
+              properties:
+                usuario_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Jugador expulsado
+
+  /usuarios/{id}/historial:
+    get:
+      tags: [Historial y ranking]
+      summary: Historial de partidas de un usuario
+      description: "⚠️ Pendiente de implementar (responde 501). PBI-06."
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Partidas jugadas por el usuario
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistorialPartida"
+
+  /ranking:
+    get:
+      tags: [Historial y ranking]
+      summary: Ranking agregado por juego
+      description: "⚠️ Pendiente de implementar (responde 501). PBI-07."
+      security: []
+      parameters:
+        - name: juego
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Juego"
+      responses:
+        "200":
+          description: Clasificación
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RankingEntrada"
+
+  /interno/salas/{id}:
+    get:
+      tags: [Interno]
+      summary: Composición de una sala (solo el servidor de partida)
+      description: "⚠️ Pendiente de implementar (responde 501)."
+      security:
+        - internalSecret: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      responses:
+        "200":
+          description: Sala encontrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Sala"
+                  - type: object
+                    properties:
+                      participantes:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Participante"
+        "401":
+          description: X-Internal-Secret ausente o incorrecto
+        "404":
+          description: La sala no existe
+
+  /interno/partidas:
+    post:
+      tags: [Interno]
+      summary: Persiste el resultado final de una partida (solo el servidor de partida)
+      description: "⚠️ Pendiente de implementar (responde 501)."
+      security:
+        - internalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResultadoPartidaRequest"
+      responses:
+        "201":
+          description: Resultado registrado
+        "401":
+          description: X-Internal-Secret ausente o incorrecto
+
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Comprobación de salud del backend
+      security: []
+      responses:
+        "200":
+          description: El backend está operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token devuelto por POST /auth/login, firmado con JWT_SECRET
+    internalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+      description: Secreto servidor-a-servidor (INTERNAL_API_SECRET), nunca lo usa el cliente
+
+  parameters:
+    SalaId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ErrorValidacion:
+      description: Datos de entrada inválidos
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      example:
+        error: email inválido
+
+    Mensaje:
+      type: object
+      properties:
+        mensaje:
+          type: string
+
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        nombre_visible:
+          type: string
+
+    RegistroRequest:
+      type: object
+      required: [email, password_hash, nombre_visible]
+      properties:
+        email:
+          type: string
+          format: email
+        password_hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+          description: SHA-256 de la contraseña en claro, en hexadecimal
+        nombre_visible:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password_hash]
+      properties:
+        email:
+          type: string
+          format: email
+        password_hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        usuario:
+          $ref: "#/components/schemas/Usuario"
+
+    RestablecerRequest:
+      type: object
+      required: [email, codigo, password_hash]
+      properties:
+        email:
+          type: string
+          format: email
+        codigo:
+          type: string
+          pattern: "^[0-9]{6}$"
+          description: Código de 6 cifras recibido por correo
+        password_hash:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+
+    Juego:
+      type: string
+      enum: [guinote, mus, tute]
+
+    Sala:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        juego:
+          $ref: "#/components/schemas/Juego"
+        estado:
+          type: string
+          enum: [esperando, en_curso, finalizada]
+        capacidad:
+          type: integer
+        jugadores_actuales:
+          type: integer
+        creador_id:
+          type: string
+          format: uuid
+
+    Participante:
+      type: object
+      properties:
+        usuario_id:
+          type: string
+          format: uuid
+        posicion:
+          type: integer
+        equipo:
+          type: integer
+          nullable: true
+
+    HistorialPartida:
+      type: object
+      properties:
+        partida_id:
+          type: string
+          format: uuid
+        juego:
+          $ref: "#/components/schemas/Juego"
+        fecha:
+          type: string
+          format: date-time
+        resultado:
+          type: object
+        gano:
+          type: boolean
+
+    RankingEntrada:
+      type: object
+      properties:
+        usuario_id:
+          type: string
+          format: uuid
+        nombre_visible:
+          type: string
+        puntos_totales:
+          type: integer
+        posicion:
+          type: integer
+
+    ResultadoPartidaRequest:
+      type: object
+      required: [sala_id, jugadores, resultado]
+      properties:
+        sala_id:
+          type: string
+          format: uuid
+        jugadores:
+          type: array
+          items:
+            $ref: "#/components/schemas/Participante"
+        resultado:
+          type: object
+          description: Lo que devuelve calcular_resultado del motor de reglas
