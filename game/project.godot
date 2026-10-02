@@ -22,7 +22,12 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 FuncionesGlobales="*res://client/autoload/funciones_globales.gd"
 CanalRed="*res://shared/canal_red.gd"
+ClienteApi="*res://client/autoload/cliente_api.gd"
 
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
+[rendering]
+
+environment/defaults/default_clear_color=Color(0.055, 0.231, 0.165, 1)
