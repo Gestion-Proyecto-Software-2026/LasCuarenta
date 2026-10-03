@@ -1,0 +1,223 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://client/ui/recuperar/recuperar.gd" id="1_recuperar"]
+[ext_resource type="Texture2D" path="res://client/assets/cartas/espadas_1.png" id="2_espadas1"]
+[ext_resource type="Texture2D" uid="uid://cslc0lwnsgx7r" path="res://client/assets/cartas/reverso.png" id="3_reverso"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/panel_cartulina.tres" id="4_panel"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_normal.tres" id="5_boton_n"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_hover.tres" id="6_boton_h"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_pressed.tres" id="7_boton_p"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_disabled.tres" id="8_boton_d"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_enlace_hover.tres" id="9_enlace_h"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/campo_texto_normal.tres" id="10_campo_n"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/campo_texto_focus.tres" id="11_campo_f"]
+[ext_resource type="Font" path="res://client/ui/theme/fuente_titulo_bold.tres" id="12_fuente_bold"]
+
+[node name="Recuperar" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_recuperar")
+
+[node name="Fondo" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.055, 0.231, 0.165, 1)
+
+[node name="CartasDecorativas" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CartaEsquinaA" type="TextureRect" parent="CartasDecorativas"]
+layout_mode = 0
+offset_left = -40.0
+offset_top = -40.0
+offset_right = 110.0
+offset_bottom = 190.0
+pivot_offset = Vector2(75, 115)
+rotation_degrees = -12.0
+modulate = Color(1, 1, 1, 0.85)
+texture = ExtResource("2_espadas1")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CartaEsquinaB" type="TextureRect" parent="CartasDecorativas"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -110.0
+offset_top = -190.0
+offset_right = 40.0
+offset_bottom = 40.0
+grow_horizontal = 0
+grow_vertical = 0
+pivot_offset = Vector2(75, 115)
+rotation_degrees = 12.0
+modulate = Color(1, 1, 1, 0.85)
+texture = ExtResource("3_reverso")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Centro" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelCartulina" type="PanelContainer" parent="Centro"]
+layout_mode = 2
+theme_override_styles/panel = ExtResource("4_panel")
+
+[node name="Formulario" type="VBoxContainer" parent="Centro/PanelCartulina"]
+layout_mode = 2
+custom_minimum_size = Vector2(320, 0)
+theme_override_constants/separation = 12
+
+[node name="Titulo" type="Label" parent="Centro/PanelCartulina/Formulario"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_fonts/font = ExtResource("12_fuente_bold")
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+text = "RECUPERAR CONTRASEÑA"
+autowrap_mode = 3
+
+[node name="PanelSolicitar" type="VBoxContainer" parent="Centro/PanelCartulina/Formulario"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="CampoEmail" type="LineEdit" parent="Centro/PanelCartulina/Formulario/PanelSolicitar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("10_campo_n")
+theme_override_styles/focus = ExtResource("11_campo_f")
+placeholder_text = "Correo electrónico"
+
+[node name="BotonSolicitar" type="Button" parent="Centro/PanelCartulina/Formulario/PanelSolicitar"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_hover_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_pressed_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_disabled_color = Color(0.106, 0.086, 0.071, 0.5)
+theme_override_fonts/font = ExtResource("12_fuente_bold")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = ExtResource("5_boton_n")
+theme_override_styles/hover = ExtResource("6_boton_h")
+theme_override_styles/pressed = ExtResource("7_boton_p")
+theme_override_styles/disabled = ExtResource("8_boton_d")
+text = "ENVIAR CÓDIGO"
+
+[node name="PanelRestablecer" type="VBoxContainer" parent="Centro/PanelCartulina/Formulario"]
+unique_name_in_owner = true
+layout_mode = 2
+visible = false
+theme_override_constants/separation = 12
+
+[node name="CampoCodigo" type="LineEdit" parent="Centro/PanelCartulina/Formulario/PanelRestablecer"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("10_campo_n")
+theme_override_styles/focus = ExtResource("11_campo_f")
+placeholder_text = "Código de 6 cifras"
+max_length = 6
+
+[node name="CampoPassword" type="LineEdit" parent="Centro/PanelCartulina/Formulario/PanelRestablecer"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("10_campo_n")
+theme_override_styles/focus = ExtResource("11_campo_f")
+placeholder_text = "Contraseña nueva"
+secret = true
+
+[node name="CampoConfirmarPassword" type="LineEdit" parent="Centro/PanelCartulina/Formulario/PanelRestablecer"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("10_campo_n")
+theme_override_styles/focus = ExtResource("11_campo_f")
+placeholder_text = "Confirma la contraseña"
+secret = true
+
+[node name="BotonRestablecer" type="Button" parent="Centro/PanelCartulina/Formulario/PanelRestablecer"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_hover_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_pressed_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_disabled_color = Color(0.106, 0.086, 0.071, 0.5)
+theme_override_fonts/font = ExtResource("12_fuente_bold")
+theme_override_font_sizes/font_size = 18
+theme_override_styles/normal = ExtResource("5_boton_n")
+theme_override_styles/hover = ExtResource("6_boton_h")
+theme_override_styles/pressed = ExtResource("7_boton_p")
+theme_override_styles/disabled = ExtResource("8_boton_d")
+text = "RESTABLECER CONTRASEÑA"
+
+[node name="EtiquetaInfo" type="Label" parent="Centro/PanelCartulina/Formulario"]
+unique_name_in_owner = true
+layout_mode = 2
+visible = false
+theme_override_colors/font_color = Color(0.106, 0.369, 0.129, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="EtiquetaError" type="Label" parent="Centro/PanelCartulina/Formulario"]
+unique_name_in_owner = true
+layout_mode = 2
+visible = false
+theme_override_colors/font_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="BotonVolver" type="Button" parent="Centro/PanelCartulina/Formulario"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.267, 0.157, 0.078, 1)
+theme_override_colors/font_hover_color = Color(0.722, 0.525, 0.043, 1)
+theme_override_colors/font_pressed_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/hover = ExtResource("9_enlace_h")
+flat = true
+text = "Volver a iniciar sesión"

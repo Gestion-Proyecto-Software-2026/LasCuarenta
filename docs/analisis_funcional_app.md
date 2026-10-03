@@ -63,6 +63,7 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 | Tabla | Campos clave | Notas |
 |---|---|---|
 | `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro` | Contraseña siempre cifrada (bcrypt o similar) |
+| `codigos_recuperacion` | `id`, `usuario_id` → `usuarios.id`, `codigo_hash`, `expira_en`, `usado`, `creado_en` | Código de un solo uso para `/auth/restablecer` (PBI-01); se envía en claro por correo, solo se guarda su SHA-256 |
 | `salas` | `id`, `juego` (`guinote`/`mus`/`tute`), `estado` (`esperando`/`en_curso`/`finalizada`), `capacidad`, `creador_id` → `usuarios.id`, `fecha_creacion` | |
 | `sala_participantes` | `sala_id`, `usuario_id`, `posicion` (0-3), `equipo` (0/1, solo aplica a Guiñote/Tute por parejas) | Tabla puente |
 | `partidas` | `id`, `sala_id`, `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json` | Registro histórico de una partida ya terminada |
@@ -79,8 +80,14 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 ### Autenticación (PBI-01)
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
-| POST | `/auth/registro` | `{ email, password, nombre_visible }` | `201 { id, email, nombre_visible }` |
-| POST | `/auth/login` | `{ email, password }` | `200 { token, usuario: { id, email, nombre_visible } }` |
+| POST | `/auth/registro` | `{ email, password_hash, nombre_visible }` | `201 { id, email, nombre_visible }`, `409` si el correo ya existe |
+| POST | `/auth/login` | `{ email, password_hash }` | `200 { token, usuario: { id, email, nombre_visible } }`, `401` si las credenciales no son válidas |
+| POST | `/auth/recuperar` | `{ email }` | `200 { mensaje }` — siempre, exista o no el correo |
+| POST | `/auth/restablecer` | `{ email, codigo, password_hash }` | `200 { mensaje }`, `400` si el código es inválido o ha caducado |
+
+`password_hash` es el **SHA-256 de la contraseña en texto plano, en hexadecimal (64 caracteres)**, calculado por el cliente antes de enviarlo: el backend nunca recibe ni ve la contraseña en claro. El backend aplica además `bcrypt` sobre ese hash antes de guardarlo en `usuarios.password_hash` (doble hash), así que ni el valor que viaja por la red ni el que queda en la base de datos sirven por sí solos como contraseña consultable. *(⚠️ Algoritmo de hash del cliente pendiente de confirmar por el equipo si se prefiere otro distinto a SHA-256; si cambia, hay que actualizar esta sección y la validación de formato en `backend/src/services/authService.js`.)*
+
+**Recuperación de contraseña:** `/auth/recuperar` comprueba si el correo existe; si existe, genera un código numérico de 6 cifras, lo guarda hasheado (SHA-256) en `codigos_recuperacion` con una caducidad de `RECOVERY_CODE_TTL_MIN` minutos (15 por defecto) y lo envía por correo (SMTP configurado por variables de entorno, ver `backend/.env.example`). La respuesta es siempre `200` con el mismo mensaje genérico, exista o no esa cuenta, para no filtrar qué correos están registrados. `/auth/restablecer` consume ese código (de un solo uso, se invalida al usarlo o al pedir uno nuevo) junto con el `password_hash` nuevo para fijar la contraseña.
 
 ### Lobby y salas (PBI-02, PBI-09)
 | Método | Ruta | Body | Respuesta |
