@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://client/ui/lobby/sala_fila.gd" id="1_fila"]
+[ext_resource type="Font" path="res://client/ui/theme/fuente_titulo_bold.tres" id="2_fuente_bold"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_normal.tres" id="3_boton_n"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_hover.tres" id="4_boton_h"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_pressed.tres" id="5_boton_p"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_disabled.tres" id="6_boton_d"]
+
+[node name="SalaFila" type="HBoxContainer"]
+custom_minimum_size = Vector2(0, 44)
+theme_override_constants/separation = 12
+script = ExtResource("1_fila")
+
+[node name="Etiqueta" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_font_sizes/font_size = 16
+vertical_alignment = 1
+text = "Guiñote"
+
+[node name="BotonUnirse" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(120, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_hover_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_pressed_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_disabled_color = Color(0.106, 0.086, 0.071, 0.5)
+theme_override_fonts/font = ExtResource("2_fuente_bold")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("3_boton_n")
+theme_override_styles/hover = ExtResource("4_boton_h")
+theme_override_styles/pressed = ExtResource("5_boton_p")
+theme_override_styles/disabled = ExtResource("6_boton_d")
+text = "UNIRSE"

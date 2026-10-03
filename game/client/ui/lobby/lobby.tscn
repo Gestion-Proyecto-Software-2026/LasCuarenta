@@ -9,6 +9,7 @@
 [ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_pressed.tres" id="7_boton_p"]
 [ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_disabled.tres" id="8_boton_d"]
 [ext_resource type="Font" path="res://client/ui/theme/fuente_titulo_bold.tres" id="9_fuente_bold"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_enlace_hover.tres" id="10_enlace_h"]
 
 [node name="Lobby" type="Control"]
 layout_mode = 3
@@ -84,7 +85,7 @@ theme_override_styles/panel = ExtResource("4_panel")
 
 [node name="Contenido" type="VBoxContainer" parent="Centro/PanelCartulina"]
 layout_mode = 2
-custom_minimum_size = Vector2(320, 0)
+custom_minimum_size = Vector2(420, 0)
 theme_override_constants/separation = 12
 
 [node name="Titulo" type="Label" parent="Centro/PanelCartulina/Contenido"]
@@ -103,13 +104,69 @@ theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 text = "Bienvenido/a"
 
-[node name="EtiquetaProximamente" type="Label" parent="Centro/PanelCartulina/Contenido"]
+[node name="EtiquetaError" type="Label" parent="Centro/PanelCartulina/Contenido"]
+unique_name_in_owner = true
 layout_mode = 2
+visible = false
+theme_override_colors/font_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Acciones" type="HBoxContainer" parent="Centro/PanelCartulina/Contenido"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="BotonCrear" type="Button" parent="Centro/PanelCartulina/Contenido/Acciones"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_hover_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_pressed_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_disabled_color = Color(0.106, 0.086, 0.071, 0.5)
+theme_override_fonts/font = ExtResource("9_fuente_bold")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("5_boton_n")
+theme_override_styles/hover = ExtResource("6_boton_h")
+theme_override_styles/pressed = ExtResource("7_boton_p")
+theme_override_styles/disabled = ExtResource("8_boton_d")
+text = "CREAR SALA"
+
+[node name="BotonActualizar" type="Button" parent="Centro/PanelCartulina/Contenido/Acciones"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+theme_override_colors/font_color = Color(0.267, 0.157, 0.078, 1)
+theme_override_colors/font_hover_color = Color(0.722, 0.525, 0.043, 1)
+theme_override_colors/font_pressed_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_colors/font_disabled_color = Color(0.267, 0.157, 0.078, 0.5)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/hover = ExtResource("10_enlace_h")
+flat = true
+text = "Actualizar"
+
+[node name="Lista" type="ScrollContainer" parent="Centro/PanelCartulina/Contenido"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 240)
+horizontal_scroll_mode = 0
+
+[node name="ListaSalas" type="VBoxContainer" parent="Centro/PanelCartulina/Contenido/Lista"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="EtiquetaVacia" type="Label" parent="Centro/PanelCartulina/Contenido"]
+unique_name_in_owner = true
+layout_mode = 2
+visible = false
 theme_override_colors/font_color = Color(0.267, 0.157, 0.078, 1)
 theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 autowrap_mode = 3
-text = "Las salas de juego (Guiñote, Mus, Tute) están en construcción."
+text = "No hay salas disponibles. ¡Crea una!"
 
 [node name="BotonCerrarSesion" type="Button" parent="Centro/PanelCartulina/Contenido"]
 unique_name_in_owner = true
