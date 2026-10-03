@@ -147,28 +147,46 @@ paths:
   /salas:
     get:
       tags: [Lobby]
-      summary: Lista las salas disponibles
-      description: "⚠️ Pendiente de implementar (responde 501)."
-      security: []
+      summary: Lista las salas en espera con plazas libres
+      description: >
+        Devuelve solo las salas en estado `esperando` con alguna plaza libre.
+        Requiere token: todas las rutas de lobby exigen autenticación.
+      security:
+        - bearerAuth: []
       parameters:
         - name: juego
           in: query
           required: false
+          description: Filtra por juego. Si se omite, devuelve salas de todos los juegos.
           schema:
             $ref: "#/components/schemas/Juego"
       responses:
         "200":
-          description: Salas existentes
+          description: Salas disponibles
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/Sala"
+              example:
+                - id: 11111111-1111-4111-8111-111111111111
+                  juego: guinote
+                  estado: esperando
+                  jugadores_actuales: 2
+                  capacidad: 4
+                  creador_id: 22222222-2222-4222-8222-222222222222
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
     post:
       tags: [Lobby]
-      summary: Crea una sala nueva
-      description: "⚠️ Pendiente de implementar (responde 501)."
+      summary: Crea una sala de Guiñote y sienta al creador
+      description: >
+        Crea una sala de 4 plazas y sienta al usuario autenticado en la posición 0.
+        Solo se admite `guinote` por ahora (mus y tute devuelven 400 hasta su PBI).
+        La respuesta incluye `servidor_direccion`, que el cliente usará cuando la sala se complete.
       security:
         - bearerAuth: []
       requestBody:
@@ -180,37 +198,73 @@ paths:
               required: [juego]
               properties:
                 juego:
-                  $ref: "#/components/schemas/Juego"
+                  type: string
+                  enum: [guinote]
+            example:
+              juego: guinote
       responses:
         "201":
-          description: Sala creada, con la dirección del servidor de partida
+          description: Sala creada
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/Sala"
-                  - type: object
-                    properties:
-                      servidor_direccion:
-                        type: string
-                        example: localhost:9000
+                $ref: "#/components/schemas/SalaCreada"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
 
   /salas/{id}/unirse:
     post:
       tags: [Lobby]
-      summary: Une al usuario autenticado a una sala
-      description: "⚠️ Pendiente de implementar (responde 501)."
+      summary: Sienta al usuario autenticado en la primera plaza libre de una sala
+      description: >
+        La sala debe estar en `esperando`, el usuario no puede estar ya sentado en ella
+        y debe quedar al menos una plaza libre. La operación es transaccional y bloquea
+        la fila de la sala, así que dos uniones simultáneas no pueden ocupar la misma plaza.
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/SalaId"
       responses:
         "200":
-          description: Sala actualizada
+          description: Usuario sentado; devuelve la sala con el recuento actualizado
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Sala"
+        "400":
+          description: El id no es un UUID válido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "404":
+          description: La sala no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: >
+            Conflicto: la sala no está en espera, el usuario ya está sentado en ella,
+            o la sala está llena.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                llena:
+                  value:
+                    error: la sala está llena
+                ya_unido:
+                  value:
+                    error: ya estás en esta sala
+                no_admite:
+                  value:
+                    error: la sala no admite nuevos jugadores
 
   /salas/{id}/expulsar:
     post:
@@ -375,6 +429,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    NoAutenticado:
+      description: Falta el token o no es válido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: no autenticado
 
   schemas:
     Error:
@@ -457,6 +519,7 @@ components:
 
     Sala:
       type: object
+      required: [id, juego, estado, capacidad, jugadores_actuales, creador_id]
       properties:
         id:
           type: string
@@ -468,11 +531,34 @@ components:
           enum: [esperando, en_curso, finalizada]
         capacidad:
           type: integer
+          example: 4
         jugadores_actuales:
           type: integer
+          example: 2
         creador_id:
           type: string
           format: uuid
+
+    SalaCreada:
+      type: object
+      description: Respuesta de POST /salas. No incluye el recuento de jugadores.
+      required: [id, juego, estado, capacidad, servidor_direccion]
+      properties:
+        id:
+          type: string
+          format: uuid
+        juego:
+          $ref: "#/components/schemas/Juego"
+        estado:
+          type: string
+          enum: [esperando]
+        capacidad:
+          type: integer
+          example: 4
+        servidor_direccion:
+          type: string
+          description: host:puerto del servidor de partida (GAME_SERVER_ADDRESS)
+          example: localhost:9000
 
     Participante:
       type: object
