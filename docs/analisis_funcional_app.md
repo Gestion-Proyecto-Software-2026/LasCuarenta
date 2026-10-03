@@ -92,12 +92,20 @@ Prefijo común: `/api`. Autenticación por JWT en cabecera `Authorization: Beare
 ### Lobby y salas (PBI-02, PBI-09)
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
-| GET | `/salas?juego=guinote` | — | `200 [{ id, juego, estado, jugadores_actuales, capacidad, creador_id }]` |
-| POST | `/salas` | `{ juego }` | `201 { id, juego, estado, capacidad, servidor_direccion }` |
-| POST | `/salas/:id/unirse` | — | `200 { sala actualizada }` |
-| POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200` — solo el creador puede invocarlo |
+Todas las rutas de lobby exigen `Authorization: Bearer <token>`.
 
-`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/salas?juego=guinote` | — | `200 [{ id, juego, estado, jugadores_actuales, capacidad, creador_id }]` — solo salas `esperando` con plazas libres |
+| POST | `/salas` | `{ juego }` | `201 { id, juego, estado, capacidad, servidor_direccion }` — solo `guinote` por ahora |
+| POST | `/salas/:id/unirse` | — | `200 { id, juego, estado, capacidad, creador_id, jugadores_actuales }` |
+| POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200` — solo el creador puede invocarlo (PBI-09, pendiente) |
+
+Errores de lobby: `400` (`juego` no admitido o `:id` que no es UUID), `401` (sin token o token inválido), `404` (la sala no existe, solo en `unirse`), `409` (la sala no está `esperando`, el usuario ya está sentado en ella, o no quedan plazas). Cuerpo de error siempre `{ error: "mensaje" }`.
+
+Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el backend asigna la primera posición libre (0-3). Las plazas se bloquean con `SELECT ... FOR UPDATE`, así que dos uniones simultáneas no pueden ocupar la misma.
+
+`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve al crear la sala, y el cliente la guarda para usarla cuando la sala se complete. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
 ### Historial y ranking (PBI-06, PBI-07)
 | Método | Ruta | Respuesta |
