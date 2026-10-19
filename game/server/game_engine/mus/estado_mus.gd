@@ -1,0 +1,36 @@
+class_name EstadoMus
+extends EstadoPartida
+## Estado de una partida de Mus (analisis_funcional_app.md §9).
+##
+## Los asientos se numeran en el sentido en que se reparte y se habla
+## (derecha-izquierda, antihorario), como en el Guiñote: el jugador "a la
+## derecha" de [code]p[/code] es [code](p + 1) % n[/code]. En mesas de 4, parejas
+## 0-2 contra 1-3; en mesas de 2, cada jugador es su propio equipo.
+
+enum Fase { MUS, DESCARTE, LANCES }
+
+const CARTAS_POR_JUGADOR := 4
+
+var fase: Fase = Fase.MUS
+## Equipo que ha ganado la partida; -1 mientras se juega.
+var equipo_ganador: int = -1
+## Quien es "mano": recibe las cartas el primero y habla el primero en cada fase.
+var jugador_mano: int = 0
+## Quién tiene que hablar (o descartarse) ahora.
+var turno: int = 0
+## manos[jugador_id] = Array[Carta]
+var manos: Array = []
+## Cartas boca abajo por repartir, en el orden en que se darán (la primera, antes).
+var mazo: Array[Carta] = []
+## Descartes de esta mano que pueden volver al mazo si se agota.
+var descartes: Array[Carta] = []
+## Descarte de cada jugador en la ronda en curso, hasta que se le dan las cartas
+## que le faltan: mientras tanto no se rebaraja, para que no le vuelvan.
+var descarte_ronda: Array = []
+## Cuántas cartas pidió cada jugador en la última ronda de descarte (-1 si aún no
+## ha habido ninguna en esta mano). Es información pública en la mesa.
+var cartas_pedidas: Array[int] = []
+## Jugadores que ya han dicho "mus" en la ronda en curso.
+var mus_pedidos: int = 0
+## Rondas de descarte jugadas en esta mano.
+var rondas_de_descarte: int = 0

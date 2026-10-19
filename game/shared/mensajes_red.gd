@@ -13,6 +13,7 @@ const CAMBIAR_SIETE := "cambiar_siete"
 const NO_CAMBIAR_SIETE := "no_cambiar_siete"
 const MUS := "mus"
 const NO_MUS := "no_mus"
+const DESCARTAR := "descartar"
 const APOSTAR := "apostar"
 const CHAT_ENVIAR := "chat_enviar"
 

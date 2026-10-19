@@ -142,6 +142,7 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `cambiar_siete` | — | Guiñote: cambiar el 7 de triunfo por la pinta cuando la pareja del jugador ganó la última baza, o para decidir tras la 4ª baza (ver §8) |
 | `no_cambiar_siete` | — | Guiñote: solo tras la 4ª baza, cuando el servidor espera esa decisión (`esperando_cambio_siete` en `estado_partida`) |
 | `mus` / `no_mus` | — | Fase de decisión en Mus |
+| `descartar` | `{ cartas }` (de 1 a 4 `carta_id` de la mano, en cualquier orden) | Mus: tras pedir mus todos, cada uno en su turno (ver §9) |
 | `apostar` | `{ tipo, cantidad }` | Envite/órdago en Mus |
 | `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
 
@@ -343,6 +344,14 @@ El "mano" habla primero en cada jugada, en este orden fijo: Grande → Chica →
 **Fin del juego parcial y de la partida.** Un juego parcial (mano) termina cuando se han jugado las 4 jugadas; los jugadores muestran sus cartas para verificar pares/juego. Un juego completo termina cuando una pareja llega o supera 8 amarrakos (40 piedras), o de inmediato si alguien acepta un órdago (se muestran todas las cartas y gana quien tenga mejor jugada en ese momento). La partida completa la gana quien primero gane 3 juegos completos.
 
 *Fuera de alcance deliberado:* el reglamento original también describe una modalidad "con plato" para apuestas de dinero real entre jugadores presenciales. No aplica a una implementación de puntuación online y queda descartada salvo que el equipo indique lo contrario.
+
+**Notas de implementación (`game/server/game_engine/mus/`).** Cómo se traduce lo anterior al motor:
+- **Asientos y sentido de juego:** como en el Guiñote, los asientos se numeran en el orden en que se reparte y se habla (derecha-izquierda, antihorario): "a la derecha" de `p` es `(p + 1) % n`. Las parejas quedan 0-2 contra 1-3 (§7); a 2 jugadores, cada uno es su propio equipo.
+- **Mano y reparto:** la primera mano se sortea con el generador aleatorio del motor (el sorteo de parejas con una carta lo resuelve quien asigna los asientos, §7). No hay corte: con la baraja mezclada al azar no cambia nada. Se dan 4 cartas de una en una, empezando por la mano.
+- **Fase de Mus:** habla la mano y después los demás por orden, con `mus` o `no_mus`; el primer `no_mus` corta el mus y empiezan los lances. Si todos piden mus, cada uno, por turno desde la mano, envía `descartar { cartas }` con entre 1 y 4 de sus cartas. Cuando se ha descartado el último, se dan las que faltan empezando por la mano y se vuelve a preguntar mus, tantas veces como haga falta. Cuántas cartas pidió cada uno es público (`cartas_pedidas` en `estado_partida`).
+- **Mazo agotado:** si se acaba a mitad de reparto, se barajan los descartes de rondas anteriores y los de quienes ya han recibido sus cartas en esta ronda, pero nunca los de quien todavía espera las suyas. Generaliza la excepción del texto ("salvo que solo falte completar la mano de un jugador") para que a nadie le vuelvan sus propios descartes.
+- **No se implementan (⚠️ pendiente de confirmar):** el caso especial de la primera mano de cada juego (dejar la baraja a la derecha para cortar el mus), que en la mesa sirve para decidir quién es mano y aquí lo decide el sorteo o la rotación; y el "Mus visto", que no puede darse online porque el servidor nunca enseña una carta al repartir.
+- **Estado:** en curso. Hechos el reparto, la fase de Mus y los descartes; faltan los lances con sus envites y el cobro. El motor todavía no está registrado en `MOTORES` de `main_server.gd`.
 
 ---
 
