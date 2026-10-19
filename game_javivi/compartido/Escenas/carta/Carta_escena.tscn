@@ -1,0 +1,159 @@
+[gd_scene format=3 uid="uid://dfjf4ul4mxkf6"]
+
+[ext_resource type="Texture2D" uid="uid://mmf6dw7fwaar" path="res://data/imagenes_cartas/As_oros.png" id="1_h5g1m"]
+[ext_resource type="Script" uid="uid://j17vt0qkknah" path="res://compartido/Escenas/carta/Carta_escena.gd" id="2_sdxei"]
+[ext_resource type="Shader" uid="uid://cx2mvk1s5byxc" path="res://compartido/Escenas/carta/shader_borde_carta.gdshader" id="3_h5g1m"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_42687"]
+size = Vector2(209.72195, 318.05518)
+
+[sub_resource type="LabelSettings" id="LabelSettings_42687"]
+font_size = 42
+font_color = Color(0.07015244, 0.07015244, 0.070152424, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_42687"]
+shader = ExtResource("3_h5g1m")
+shader_parameter/radio_esquina = 0.1200000057
+shader_parameter/opacidad_centro = 0.0
+shader_parameter/opacidad_borde = 0.130000006175
+
+[sub_resource type="Shader" id="Shader_lme8b"]
+code = "shader_type canvas_item;
+
+// Parámetros modificables desde el Inspector
+uniform float radio_esquina : hint_range(0.0, 1.0) = 0.2;
+uniform float opacidad_centro : hint_range(0.0, 1.0) = 0.8;
+uniform float opacidad_borde : hint_range(0.0, 1.0) = 0.3;
+
+void fragment() {
+    // Normalizar las coordenadas UV al rango [-1, 1] desde el centro
+    vec2 uv = UV * 2.0 - 1.0;
+    
+    // --- LÓGICA DE BORDES REDONDEADOS ---
+    // Calculamos la distancia hacia las esquinas
+    vec2 abs_uv = abs(uv) - (1.0 - radio_esquina);
+    float dist_esquina = length(max(abs_uv, 0.0)) - radio_esquina;
+    
+    // Si la distancia es mayor a 0, estamos fuera del borde redondeado (hacemos invisible)
+    if (dist_esquina > 0.0) {
+        discard;
+    }
+    
+    // --- LÓGICA DE OPACIDAD (Más opaco al centro, más transparente al borde) ---
+    // Medimos la distancia desde el centro puro (0,0) hacia afuera
+    float dist_centro = length(uv);
+    
+    // Interpolamos la opacidad basándonos en la distancia al centro
+    float alpha = mix(opacidad_centro, opacidad_borde, clamp(dist_centro, 0.0, 1.0));
+    
+    // Aplicamos el color original del ColorRect pero con la nueva opacidad calculada
+    COLOR = vec4(COLOR.rgb, alpha * COLOR.a);
+}
+
+//void light() {
+//	// Called for every pixel for every light affecting the CanvasItem.
+//	// Uncomment to replace the default light processing function with this one.
+//}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_qj448"]
+shader = SubResource("Shader_lme8b")
+shader_parameter/radio_esquina = 0.1200000057
+shader_parameter/opacidad_centro = 0.22000001045
+shader_parameter/opacidad_borde = 0.6800000323
+
+[sub_resource type="Shader" id="Shader_qj448"]
+code = "shader_type canvas_item;
+
+// Parámetros modificables desde el Inspector
+uniform float radio_esquina : hint_range(0.0, 1.0) = 0.2;
+uniform float opacidad_centro : hint_range(0.0, 1.0) = 0.8;
+uniform float opacidad_borde : hint_range(0.0, 1.0) = 0.3;
+
+void fragment() {
+    // Normalizar las coordenadas UV al rango [-1, 1] desde el centro
+    vec2 uv = UV * 2.0 - 1.0;
+    
+    // --- LÓGICA DE BORDES REDONDEADOS ---
+    // Calculamos la distancia hacia las esquinas
+    vec2 abs_uv = abs(uv) - (1.0 - radio_esquina);
+    float dist_esquina = length(max(abs_uv, 0.0)) - radio_esquina;
+    
+    // Si la distancia es mayor a 0, estamos fuera del borde redondeado (hacemos invisible)
+    if (dist_esquina > 0.0) {
+        discard;
+    }
+    
+    // --- LÓGICA DE OPACIDAD (Más opaco al centro, más transparente al borde) ---
+    // Medimos la distancia desde el centro puro (0,0) hacia afuera
+    float dist_centro = length(uv);
+    
+    // Interpolamos la opacidad basándonos en la distancia al centro
+    float alpha = mix(opacidad_centro, opacidad_borde, clamp(dist_centro, 0.0, 1.0));
+    
+    // Aplicamos el color original del ColorRect pero con la nueva opacidad calculada
+    COLOR = vec4(COLOR.rgb, alpha * COLOR.a);
+}
+
+//void light() {
+//	// Called for every pixel for every light affecting the CanvasItem.
+//	// Uncomment to replace the default light processing function with this one.
+//}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_flotj"]
+shader = SubResource("Shader_qj448")
+shader_parameter/radio_esquina = 0.10000000475
+shader_parameter/opacidad_centro = 0.050000002375
+shader_parameter/opacidad_borde = 0.130000006175
+
+[node name="Sprite2D" type="Sprite2D" unique_id=1451397304]
+scale = Vector2(0.7200009, 0.7200009)
+texture = ExtResource("1_h5g1m")
+script = ExtResource("2_sdxei")
+
+[node name="Area2D" type="Area2D" parent="." unique_id=311511811]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D" unique_id=544771861]
+position = Vector2(0.6944474, 0.69444877)
+shape = SubResource("RectangleShape2D_42687")
+
+[node name="Label" type="Label" parent="." unique_id=545374559]
+visible = false
+offset_left = -60.0
+offset_top = 160.0
+offset_right = 77.0
+offset_bottom = 218.0
+text = "estado"
+label_settings = SubResource("LabelSettings_42687")
+
+[node name="Borde" type="Control" parent="." unique_id=332872252]
+visible = false
+z_index = -1
+material = SubResource("ShaderMaterial_42687")
+layout_mode = 3
+anchors_preset = 0
+offset_left = -112.49986
+offset_top = -168.05534
+offset_right = 113.88875
+offset_bottom = 165.2776
+mouse_filter = 2
+
+[node name="Borde_detrás" type="ColorRect" parent="Borde" unique_id=1978598537]
+z_index = -1
+material = SubResource("ShaderMaterial_qj448")
+layout_mode = 0
+offset_right = 226.38861
+offset_bottom = 333.33295
+mouse_filter = 2
+
+[node name="Borde_delante" type="ColorRect" parent="Borde" unique_id=541715498]
+z_index = 1
+material = SubResource("ShaderMaterial_flotj")
+layout_mode = 0
+offset_right = 226.38861
+offset_bottom = 333.33295
+mouse_filter = 2
+
+[connection signal="mouse_entered" from="Area2D" to="." method="_on_area_2d_mouse_entered"]
+[connection signal="mouse_exited" from="Area2D" to="." method="_on_area_2d_mouse_exited"]

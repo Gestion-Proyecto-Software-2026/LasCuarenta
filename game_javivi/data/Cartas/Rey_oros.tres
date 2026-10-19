@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://cpt3gbqt0ob6x"]
+
+[ext_resource type="Texture2D" uid="uid://cc1v25hecum5a" path="res://data/imagenes_cartas/Rey_oros.png" id="1_gmnbx"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_dhjjf"]
+
+[resource]
+script = ExtResource("2_dhjjf")
+id = "Rey_oros"
+valor = 12
+imagen = ExtResource("1_gmnbx")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"
