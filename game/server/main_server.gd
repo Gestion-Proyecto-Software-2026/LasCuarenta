@@ -18,6 +18,7 @@ const ESPERA_ANTES_DE_EXPULSAR_S := 1.0
 ## Cada PBI de juego añade aquí su línea.
 const MOTORES := {
 	"guinote": preload("res://server/game_engine/guinote/motor_guinote.gd"),
+	"mus": preload("res://server/game_engine/mus/motor_mus.gd"),
 }
 
 var room_manager: RoomManager
