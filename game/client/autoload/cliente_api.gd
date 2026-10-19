@@ -59,6 +59,18 @@ func restablecer(email: String, codigo: String, password: String) -> Dictionary:
 	})
 
 
+func listar_salas(juego: String = "guinote") -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_GET, "/salas?juego=" + juego.uri_encode())
+
+
+func crear_sala(juego: String = "guinote") -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_POST, "/salas", {"juego": juego})
+
+
+func unirse_sala(sala_id: String) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/unirse" % sala_id.uri_encode())
+
+
 func _hash_password(password: String) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
@@ -89,10 +101,13 @@ func _pedir(metodo: HTTPClient.Method, ruta: String, cuerpo: Variant = null) -> 
 
 	var respuesta: Array = await http.request_completed
 	http.queue_free()
-	var resultado: int = respuesta[0]
-	var codigo: int = respuesta[1] if resultado == HTTPRequest.RESULT_SUCCESS else 0
+	return _decodificar_respuesta(respuesta[0], respuesta[1], respuesta[3])
+
+
+static func _decodificar_respuesta(resultado: int, codigo_http: int, cuerpo: PackedByteArray) -> Dictionary:
+	var codigo := codigo_http if resultado == HTTPRequest.RESULT_SUCCESS else 0
 	var datos: Variant = null
 	var json := JSON.new()
-	if json.parse((respuesta[3] as PackedByteArray).get_string_from_utf8()) == OK:
+	if json.parse(cuerpo.get_string_from_utf8()) == OK:
 		datos = json.data
 	return {"ok": codigo >= 200 and codigo < 300, "codigo": codigo, "datos": datos}
