@@ -137,10 +137,14 @@ static func descartes_posibles(mano: Array) -> Array[Dictionary]:
 ## antes de compararlo con [method jugadas_validas].
 func _validar(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> String:
 	var e := estado as EstadoMus
-	if jugada.get("tipo") == MensajesRed.DESCARTAR and jugada.get("cartas") is Array:
+	if not jugada.get("tipo") is String:
+		return ERROR_JUGADA_NO_VALIDA
+	var cartas: Variant = jugada.get("cartas")
+	if jugada["tipo"] == MensajesRed.DESCARTAR and cartas is Array \
+			and cartas.all(func(id: Variant) -> bool: return id is String):
 		var ids := _ids(e.manos[jugador_id])
-		var cartas: Array = jugada["cartas"].duplicate()
-		cartas.sort_custom(func(a: Variant, b: Variant) -> bool: return ids.find(a) < ids.find(b))
+		cartas = cartas.duplicate()
+		cartas.sort_custom(func(a: String, b: String) -> bool: return ids.find(a) < ids.find(b))
 		jugada = jugada.duplicate()
 		jugada["cartas"] = cartas
 	return super(estado, jugador_id, jugada)
