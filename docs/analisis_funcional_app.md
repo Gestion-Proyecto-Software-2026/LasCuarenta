@@ -143,7 +143,10 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `no_cambiar_siete` | — | Guiñote: solo tras la 4ª baza, cuando el servidor espera esa decisión (`esperando_cambio_siete` en `estado_partida`) |
 | `mus` / `no_mus` | — | Fase de decisión en Mus |
 | `descartar` | `{ cartas }` (de 1 a 4 `carta_id` de la mano, en cualquier orden) | Mus: tras pedir mus todos, cada uno en su turno (ver §9) |
-| `apostar` | `{ tipo, cantidad }` | Envite/órdago en Mus |
+| `pasar` | — | Mus: en un lance, mientras nadie ha envidado |
+| `envidar` | `{ cantidad }` (piedras, de 2 a 10) | Mus: envidar o, ante un envite rival, subirlo en `cantidad` |
+| `ordago` | — | Mus: envidar el juego entero, o subir a órdago un envite rival |
+| `quiero` / `no_quiero` | — | Mus: contestar a un envite u órdago rival |
 | `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
 
 **Servidor → Cliente**
@@ -351,7 +354,13 @@ El "mano" habla primero en cada jugada, en este orden fijo: Grande → Chica →
 - **Fase de Mus:** habla la mano y después los demás por orden, con `mus` o `no_mus`; el primer `no_mus` corta el mus y empiezan los lances. Si todos piden mus, cada uno, por turno desde la mano, envía `descartar { cartas }` con entre 1 y 4 de sus cartas. Cuando se ha descartado el último, se dan las que faltan empezando por la mano y se vuelve a preguntar mus, tantas veces como haga falta. Cuántas cartas pidió cada uno es público (`cartas_pedidas` en `estado_partida`).
 - **Mazo agotado:** si se acaba a mitad de reparto, se barajan los descartes de rondas anteriores y los de quienes ya han recibido sus cartas en esta ronda, pero nunca los de quien todavía espera las suyas. Generaliza la excepción del texto ("salvo que solo falte completar la mano de un jugador") para que a nadie le vuelvan sus propios descartes.
 - **No se implementan (⚠️ pendiente de confirmar):** el caso especial de la primera mano de cada juego (dejar la baraja a la derecha para cortar el mus), que en la mesa sirve para decidir quién es mano y aquí lo decide el sorteo o la rotación; y el "Mus visto", que no puede darse online porque el servidor nunca enseña una carta al repartir.
-- **Estado:** en curso. Hechos el reparto, la fase de Mus y los descartes; faltan los lances con sus envites y el cobro. El motor todavía no está registrado en `MOTORES` de `main_server.gd`.
+- **Valoración de las jugadas** (`JugadasMus`): con 8 reyes y 8 ases (el Tres cuenta como Rey y el Dos como As, también para Pares). Grande compara las cartas de la más alta a la más baja, y Chica de la más baja a la más alta. Pares compara primero el tipo (duples, medias, par) y después las cartas de la jugada; cuatro iguales son duples y ganan a cualquier otro duples de ese rango. Juego sigue el orden 31, 32, 40, 37…33, y Punto gana quien más suma. **Empates (⚠️ el texto no lo dice; es la regla habitual):** gana quien esté más cerca de la mano.
+- **Quién habla en cada lance:** en Grande, Chica y Punto, todos; en Pares y Juego, solo quienes tienen la jugada. Al llegar a esos dos lances es público quién la tiene (`tienen_pares` y `tienen_juego` en `estado_partida`), como cuando en la mesa se dice "pares sí / no". Si solo una pareja tiene la jugada, no hay a quién envidar: el lance se da por pasado y la jugada se cobra al final. Esto extiende a Juego la regla que §9 da para Pares (⚠️ pendiente de confirmar).
+- **Envites:** la palabra va por orden desde la mano. Sin envite se puede `pasar`, `envidar { cantidad }` u `ordago`; si pasan todos, el lance queda "en paso". Ante un envite contestan los rivales con la jugada, por orden a partir de quien envidó: `quiero`, `no_quiero`, subir (`envidar` de nuevo, que suma `cantidad` a lo envidado) u `ordago`. El compañero de quien envida no habla. Basta con que un rival quiera para que el envite sea querido; si el primero no lo quiere, contesta su compañero. Ante un órdago solo se puede querer o no.
+- **Cuánto se envida (⚠️ decisión del motor):** de 2 a 10 piedras de una vez, para que `jugadas_validas` pueda enumerarlas. Para más, se sube varias veces o se va al órdago. El "pasar tras un envite queda eliminado" de §9 es el `no_quiero`.
+- **No querido ("deje"):** quien envidó cobra en el acto lo que había antes de su envite, o 1 piedra si era el primero. Así, si un envite de 2 se sube a 5 y no se quiere, quien subió cobra 2. La parte de "lo que había" generaliza la piedra de deje de §9 a los reenvites (⚠️ es la regla habitual; pendiente de confirmar).
+- **Órdago querido:** no se juega nada más de la mano.
+- **Estado:** en curso. Hechos el reparto, la fase de Mus, los descartes y los lances con sus envites; faltan el cobro al final de la mano y el fin del juego y de la partida. El motor todavía no está registrado en `MOTORES` de `main_server.gd`.
 
 ---
 
