@@ -3,14 +3,31 @@ extends MotorDeJuego
 ## Motor de reglas del Mus (analisis_funcional_app.md §9), a 2 o a 4 jugadores.
 ##
 ## Implementado: reparto de 4 cartas, la fase de Mus ("mus" / "no hay mus"),
-## las rondas de descarte (rebarajando los descartes si se agota el mazo) y los
-## lances (Grande, Chica, Pares y Juego o Punto) con sus envites: pasar,
-## envidar, reenvidar, órdago, quiero y no quiero, cobrando el "deje" en el acto.
-## Pendiente: el cobro al final de la mano y el fin del juego y de la partida.
+## las rondas de descarte (rebarajando los descartes si se agota el mazo), los
+## lances (Grande, Chica, Pares y Juego o Punto) con sus envites (pasar,
+## envidar, reenvidar, órdago, quiero y no quiero), el cobro de cada mano y el
+## fin del juego y de la partida. Es el motor completo de §9.
 
 ## Piedras que se pueden envidar (o subir) de una vez; para más, el órdago.
 const ENVITE_MINIMO := 2
 const ENVITE_MAXIMO := 10
+## Un juego se gana al llegar a 40 piedras (8 amarracos); la variante corta es a 30.
+const PIEDRAS_POR_JUEGO := 40
+const PIEDRAS_POR_AMARRACO := 5
+## La partida es al mejor de 3 juegos.
+const JUEGOS_PARA_GANAR := 2
+
+var piedras_por_juego: int
+var juegos_para_ganar: int
+
+
+## [param p_piedras_por_juego] y [param p_juegos_para_ganar] permiten jugar la
+## variante corta o una partida a un solo juego; RoomManager usa los de §9.
+func _init(p_rng: RandomNumberGenerator = null, p_piedras_por_juego := PIEDRAS_POR_JUEGO,
+		p_juegos_para_ganar := JUEGOS_PARA_GANAR) -> void:
+	super(p_rng)
+	piedras_por_juego = p_piedras_por_juego
+	juegos_para_ganar = p_juegos_para_ganar
 
 
 func jugadores_admitidos() -> Array[int]:
@@ -45,6 +62,7 @@ func _repartir(e: EstadoMus, num_jugadores: int) -> void:
 	e.lances_jugados = []
 	e.envite = {}
 	e.hablan = []
+	e.cobros = []
 	_empezar_ronda_de_mus(e)
 
 
@@ -119,10 +137,14 @@ static func descartes_posibles(mano: Array) -> Array[Dictionary]:
 ## antes de compararlo con [method jugadas_validas].
 func _validar(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> String:
 	var e := estado as EstadoMus
-	if jugada.get("tipo") == MensajesRed.DESCARTAR and jugada.get("cartas") is Array:
+	if not jugada.get("tipo") is String:
+		return ERROR_JUGADA_NO_VALIDA
+	var cartas: Variant = jugada.get("cartas")
+	if jugada["tipo"] == MensajesRed.DESCARTAR and cartas is Array \
+			and cartas.all(func(id: Variant) -> bool: return id is String):
 		var ids := _ids(e.manos[jugador_id])
-		var cartas: Array = jugada["cartas"].duplicate()
-		cartas.sort_custom(func(a: Variant, b: Variant) -> bool: return ids.find(a) < ids.find(b))
+		cartas = cartas.duplicate()
+		cartas.sort_custom(func(a: String, b: String) -> bool: return ids.find(a) < ids.find(b))
 		jugada = jugada.duplicate()
 		jugada["cartas"] = cartas
 	return super(estado, jugador_id, jugada)
@@ -151,7 +173,7 @@ func _ejecutar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary
 		MensajesRed.ORDAGO:
 			_envidar(e, jugador_id, 0, true)
 		MensajesRed.QUIERO:
-			_cerrar_lance(e, "querido")
+			_querer(e)
 		MensajesRed.NO_QUIERO:
 			_no_querer(e)
 
@@ -212,7 +234,8 @@ func _empezar_lance(e: EstadoMus, lance: EstadoMus.Lance) -> void:
 	for jugador in e.hablan:
 		equipos[equipo_de(jugador)] = true
 	if equipos.size() < 2:
-		_cerrar_lance(e, "sin_jugada" if e.hablan.is_empty() else "paso")
+		_registrar_lance(e, "sin_jugada" if e.hablan.is_empty() else "paso")
+		_siguiente_lance(e)
 		return
 	e.turno = e.hablan[0]
 
@@ -237,7 +260,8 @@ func _pasar(e: EstadoMus, jugador_id: int) -> void:
 	if siguiente < e.hablan.size():
 		e.turno = e.hablan[siguiente]
 	else:
-		_cerrar_lance(e, "paso")
+		_registrar_lance(e, "paso")
+		_siguiente_lance(e)
 
 
 ## Envite, reenvite (sube [param cantidad] sobre lo envidado) u órdago. Contestan
@@ -266,15 +290,32 @@ func _no_querer(e: EstadoMus) -> void:
 	if not responden.is_empty():
 		e.turno = responden[0]
 		return
-	e.piedras[e.envite["equipo"]] += piedras_del_deje(e.envite)
-	_cerrar_lance(e, "no_querido")
+	var lance := e.lance
+	var equipo: int = e.envite["equipo"]
+	var deje := piedras_del_deje(e.envite)
+	_registrar_lance(e, "no_querido")
+	if _cobrar(e, lance, equipo, deje, "deje"):
+		_terminar_juego(e, equipo, "piedras")
+		return
+	_siguiente_lance(e)
+
+
+## Lo querido se cobra al final de la mano, salvo el órdago: se enseñan las
+## cartas y quien tenga la mejor jugada del lance gana el juego en el acto.
+func _querer(e: EstadoMus) -> void:
+	var ordago: bool = e.envite["ordago"]
+	_registrar_lance(e, "querido")
+	if ordago:
+		_terminar_juego(e, equipo_de(mejor_jugador(e, e.lance)), "ordago")
+		return
+	_siguiente_lance(e)
 
 
 static func piedras_del_deje(envite: Dictionary) -> int:
 	return maxi(envite["apuesta_previa"], 1)
 
 
-func _cerrar_lance(e: EstadoMus, resultado: String) -> void:
+func _registrar_lance(e: EstadoMus, resultado: String) -> void:
 	var apuesta := 0
 	if resultado == "querido":
 		apuesta = e.envite["apuesta"]
@@ -289,15 +330,112 @@ func _cerrar_lance(e: EstadoMus, resultado: String) -> void:
 	})
 	e.envite = {}
 	e.hablan = []
-	if resultado == "querido" and e.lances_jugados[-1]["ordago"]:
-		# Órdago querido: se enseñan las cartas y no se juega nada más de la mano.
-		_terminar_mano(e)
-		return
-	_siguiente_lance(e)
 
 
-## Pasa a la mano siguiente: es mano el que estaba a su derecha.
+# --- Cobro, fin del juego y de la partida (§9) ---
+
+## Quien tiene la mejor jugada del lance entre quienes la tienen; a igualdad,
+## el más cercano a la mano. -1 si nadie la tiene.
+static func mejor_jugador(e: EstadoMus, lance: EstadoMus.Lance) -> int:
+	var mejor := -1
+	for n in e.manos.size():
+		var jugador := en_orden(e, n)
+		if not JugadasMus.tiene_jugada(e.manos[jugador], lance):
+			continue
+		if mejor == -1 or JugadasMus.comparar(lance, e.manos[jugador], e.manos[mejor]) > 0:
+			mejor = jugador
+	return mejor
+
+
+## Lo que vale la jugada de [param equipo] en [param lance], sumando la de los
+## dos de la pareja: en Pares y Juego, la de cada uno que la tenga; el Punto, 1.
+static func valor_de_equipo(e: EstadoMus, lance: EstadoMus.Lance, equipo: int) -> int:
+	if lance == EstadoMus.Lance.PUNTO:
+		return 1
+	var total := 0
+	for jugador in e.manos.size():
+		if equipo_de(jugador) == equipo:
+			total += JugadasMus.valor(e.manos[jugador], lance)
+	return total
+
+
+## Las piedras que da al final de la mano el lance [param jugado] (de
+## [member EstadoMus.lances_jugados]), por orden: [code][{ equipo, piedras, concepto }][/code].
+## - Grande y Chica: en paso, 1 piedra a la mejor; querido, lo envidado a la mejor;
+##   no querido, nada más (el deje ya se cobró).
+## - Pares, Juego y Punto: además de lo envidado, la mejor pareja cobra lo que
+##   vale su jugada. Si no se quiso, la cobra la que envidó aunque sus cartas
+##   sean peores: quien no quiere pierde el derecho a cobrar ese lance.
+static func cobros_del_lance(e: EstadoMus, jugado: Dictionary) -> Array[Dictionary]:
+	var lance: EstadoMus.Lance = jugado["lance"]
+	var cobros: Array[Dictionary] = []
+	if jugado["resultado"] == "sin_jugada":
+		return cobros
+	var por_jugada := lance in [EstadoMus.Lance.PARES, EstadoMus.Lance.JUEGO, EstadoMus.Lance.PUNTO]
+	if jugado["resultado"] == "no_querido":
+		if por_jugada:
+			cobros.append({"equipo": jugado["equipo"], "concepto": "jugada",
+				"piedras": valor_de_equipo(e, lance, jugado["equipo"])})
+		return cobros
+	var ganador := equipo_de(mejor_jugador(e, lance))
+	if jugado["resultado"] == "querido":
+		cobros.append({"equipo": ganador, "piedras": jugado["apuesta"], "concepto": "envite"})
+	elif not por_jugada:
+		cobros.append({"equipo": ganador, "piedras": 1, "concepto": "paso"})
+	if por_jugada:
+		cobros.append({"equipo": ganador, "piedras": valor_de_equipo(e, lance, ganador), "concepto": "jugada"})
+	return cobros
+
+
+## Suma las piedras y dice si con ellas [param equipo] ha ganado el juego.
+func _cobrar(e: EstadoMus, lance: EstadoMus.Lance, equipo: int, piedras: int, concepto: String) -> bool:
+	e.piedras[equipo] += piedras
+	e.cobros.append({"lance": lance, "equipo": equipo, "piedras": piedras, "concepto": concepto})
+	return e.piedras[equipo] >= piedras_por_juego
+
+
+## Al acabar los lances se enseñan las cartas y se cobra lance a lance, en el
+## orden en que se jugaron. En cuanto una pareja llega a las piedras del juego,
+## lo gana y no se cobra nada más.
 func _terminar_mano(e: EstadoMus) -> void:
+	for jugado: Dictionary in e.lances_jugados:
+		for cobro: Dictionary in cobros_del_lance(e, jugado):
+			if cobro["piedras"] > 0 and _cobrar(e, jugado["lance"], cobro["equipo"], cobro["piedras"], cobro["concepto"]):
+				_terminar_juego(e, cobro["equipo"], "piedras")
+				return
+	_guardar_ultima_mano(e, -1)
+	_siguiente_mano(e)
+
+
+## [param equipo] gana el juego; si con él gana la partida, termina. Si no, se
+## empieza otro juego desde cero piedras.
+func _terminar_juego(e: EstadoMus, equipo: int, motivo: String) -> void:
+	e.juegos[equipo] += 1
+	e.juegos_jugados.append({"equipo": equipo, "piedras": e.piedras.duplicate(), "motivo": motivo})
+	_guardar_ultima_mano(e, equipo)
+	if e.juegos[equipo] >= juegos_para_ganar:
+		e.equipo_ganador = equipo
+		e.hablan = []
+		return
+	e.piedras = [0, 0] as Array[int]
+	_siguiente_mano(e)
+
+
+func _guardar_ultima_mano(e: EstadoMus, juego_para: int) -> void:
+	var manos: Array = []
+	for mano: Array in e.manos:
+		manos.append(_ids(mano))
+	e.ultima_mano = {
+		"mano": e.jugador_mano,
+		"manos": manos,
+		"lances": e.lances_jugados.duplicate(true),
+		"cobros": e.cobros.duplicate(true),
+		"juego_para": juego_para,
+	}
+
+
+## Es mano el que estaba a la derecha de la mano anterior, y se vuelve a repartir.
+func _siguiente_mano(e: EstadoMus) -> void:
 	e.jugador_mano = (e.jugador_mano + 1) % e.num_jugadores
 	_repartir(e, e.num_jugadores)
 
@@ -306,9 +444,18 @@ func ha_terminado(estado: EstadoPartida) -> bool:
 	return (estado as EstadoMus).equipo_ganador != -1
 
 
+## [code]{ equipo_ganador, puntos_por_equipo, juegos, piedras_por_juego }[/code]:
+## [code]puntos_por_equipo[/code] son los juegos ganados por cada equipo y
+## [code]juegos[/code], cómo terminó cada uno ([member EstadoMus.juegos_jugados]).
+## Antes de terminar, [code]equipo_ganador[/code] es -1.
 func calcular_resultado(estado: EstadoPartida) -> Dictionary:
 	var e := estado as EstadoMus
-	return {"equipo_ganador": e.equipo_ganador, "puntos_por_equipo": [0, 0]}
+	return {
+		"equipo_ganador": e.equipo_ganador,
+		"puntos_por_equipo": e.juegos.duplicate(),
+		"juegos": e.juegos_jugados.duplicate(true),
+		"piedras_por_juego": piedras_por_juego,
+	}
 
 
 ## Lo que ve [param jugador_id]: su mano y lo público de la mesa (cuántas cartas
@@ -330,15 +477,38 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"lance": nombre_lance(e.lance) if en_lances else null,
 		"hablan": e.hablan.duplicate(),
 		"envite": envite,
-		"lances_jugados": e.lances_jugados.map(func(l: Dictionary) -> Dictionary:
-			var copia := l.duplicate()
-			copia["lance"] = nombre_lance(l["lance"])
-			return copia),
+		"lances_jugados": _con_nombre_de_lance(e.lances_jugados),
 		# En la mesa se dice en voz alta si se tienen pares o juego al llegar a ese lance.
 		"tienen_pares": _declaracion(e, EstadoMus.Lance.PARES) if en_lances and e.lance >= EstadoMus.Lance.PARES else null,
 		"tienen_juego": _declaracion(e, EstadoMus.Lance.JUEGO) if en_lances and e.lance >= EstadoMus.Lance.JUEGO else null,
 		"piedras": e.piedras.duplicate(),
+		"amarracos": e.piedras.map(func(p: int) -> int: return amarracos(p)),
+		"cobros": _con_nombre_de_lance(e.cobros),
+		"juegos": e.juegos.duplicate(),
+		"piedras_por_juego": piedras_por_juego,
+		"juegos_para_ganar": juegos_para_ganar,
+		# Las cartas de la mano anterior ya se enseñaron al terminarla.
+		"ultima_mano": {} if e.ultima_mano.is_empty() else {
+			"mano": e.ultima_mano["mano"],
+			"manos": e.ultima_mano["manos"].duplicate(true),
+			"lances": _con_nombre_de_lance(e.ultima_mano["lances"]),
+			"cobros": _con_nombre_de_lance(e.ultima_mano["cobros"]),
+			"juego_para": e.ultima_mano["juego_para"],
+		},
 	}
+
+
+## Amarracos completos (de 5 piedras) que hay en [param piedras].
+static func amarracos(piedras: int) -> int:
+	@warning_ignore("integer_division")
+	return piedras / PIEDRAS_POR_AMARRACO
+
+
+static func _con_nombre_de_lance(lista: Array) -> Array:
+	return lista.map(func(l: Dictionary) -> Dictionary:
+		var copia := l.duplicate()
+		copia["lance"] = nombre_lance(l["lance"])
+		return copia)
 
 
 func _declaracion(e: EstadoMus, lance: EstadoMus.Lance) -> Array[bool]:

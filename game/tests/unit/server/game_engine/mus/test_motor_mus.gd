@@ -182,6 +182,17 @@ func test_descartes_no_validos() -> void:
 			"descarte %s" % [cartas])
 	assert_false(motor.aplicar_jugada(e, e.turno, {"tipo": "descartar"}).ok, "sin cartas")
 	assert_false(motor.aplicar_jugada(e, e.turno, {"tipo": "mus"}).ok, "ya no se dice mus")
+	for cartas: Variant in [[1, 2], [null], [{"id": ids[0]}]]:
+		assert_false(motor.aplicar_jugada(e, e.turno, {"tipo": "descartar", "cartas": cartas}).ok,
+			"descarte %s" % [cartas])
+
+
+func test_jugadas_con_tipo_que_no_es_texto() -> void:
+	var motor := _motor()
+	var e := motor.iniciar(4) as EstadoMus
+	for tipo: Variant in [5, null, ["mus"]]:
+		assert_false(motor.aplicar_jugada(e, e.turno, {"tipo": tipo}).ok, "tipo %s" % [tipo])
+	assert_false(motor.aplicar_jugada(e, e.turno, {}).ok, "sin tipo")
 
 
 func test_tras_descartarse_todos_se_completan_las_manos_y_vuelve_el_mus() -> void:

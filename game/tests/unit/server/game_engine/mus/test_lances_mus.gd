@@ -281,7 +281,8 @@ func test_en_juego_contesta_solo_el_rival_con_juego() -> void:
 	e = _aplicar(e, 0, _envido())
 	assert_eq(e.envite["responden"], [3] as Array[int], "el 1 no tiene juego")
 	e = _aplicar(e, 3, NO_QUIERO)
-	assert_eq(e.piedras, [1, 0] as Array[int])
+	# Era el último lance: la mano ya se ha cobrado, empezando por el deje.
+	assert_eq(e.ultima_mano["cobros"][0], {"lance": L.JUEGO, "equipo": 0, "piedras": 1, "concepto": "deje"})
 
 
 # --- A dos jugadores ---

@@ -57,3 +57,19 @@ var envite: Dictionary = {}
 var lances_jugados: Array[Dictionary] = []
 ## Piedras de cada equipo en el juego en curso.
 var piedras: Array[int] = [0, 0]
+## Piedras cobradas en la mano en curso, en el orden en que se cobran:
+## { "lance": Lance, "equipo": int, "piedras": int, "concepto": String }, con
+## [code]concepto[/code] "deje", "paso" (Grande o Chica sin envite), "envite"
+## (lo querido) o "jugada" (lo que valen los Pares, el Juego o el Punto).
+var cobros: Array[Dictionary] = []
+
+## Juegos ganados por cada equipo en la partida.
+var juegos: Array[int] = [0, 0]
+## Cómo terminó cada juego, en orden: { "equipo": int (el que lo ganó),
+## "piedras": Array[int], "motivo": "piedras" | "ordago" }.
+var juegos_jugados: Array[Dictionary] = []
+## La última mano terminada, con todas las cartas boca arriba como cuando se
+## enseñan al final: { "mano": int, "manos": Array[Array[String]],
+## "lances": lances_jugados, "cobros": cobros, "juego_para": int (equipo que
+## ganó el juego en esa mano, o -1) }. {} hasta que termina la primera.
+var ultima_mano: Dictionary = {}
