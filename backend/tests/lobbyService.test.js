@@ -64,6 +64,16 @@ describe("lobbyService.listarSalas", () => {
     });
     expect(pool.query).not.toHaveBeenCalled();
   });
+
+  it("agrega los jugadores (con nombre_visible) de cada sala en la misma consulta", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    await lobbyService.listarSalas({});
+
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).toContain("json_agg");
+    expect(sql).toContain("LEFT JOIN usuarios");
+  });
 });
 
 describe("lobbyService.crearSala", () => {
@@ -81,6 +91,7 @@ describe("lobbyService.crearSala", () => {
       juego: "guinote",
       estado: "esperando",
       capacidad: 4,
+      tiene_contrasena: false,
       servidor_direccion: "localhost:9000",
     });
     expect(sqlsEjecutados()).toEqual([
@@ -89,17 +100,96 @@ describe("lobbyService.crearSala", () => {
       expect.stringContaining("INSERT INTO sala_participantes"),
       "COMMIT",
     ]);
+    const insertSala = cliente.query.mock.calls[1];
+    expect(insertSala[1]).toEqual([
+      "guinote",
+      4,
+      USUARIO_ID,
+      "Sala de Guiñote",
+      null,
+    ]);
     const insertParticipante = cliente.query.mock.calls[2];
     expect(insertParticipante[1]).toEqual([SALA_ID, USUARIO_ID]);
     expect(cliente.release).toHaveBeenCalledTimes(1);
   });
 
+  it("crea una sala de Mus a 2 jugadores con nombre y contraseña", async () => {
+    prepararCliente({
+      "INSERT INTO salas": [
+        {
+          id: SALA_ID,
+          juego: "mus",
+          estado: "esperando",
+          capacidad: 2,
+          nombre: "Partida rápida",
+        },
+      ],
+    });
+
+    const sala = await lobbyService.crearSala(
+      {
+        juego: "mus",
+        capacidad: 2,
+        nombre: "Partida rápida",
+        password_hash: "a".repeat(64),
+      },
+      USUARIO_ID,
+    );
+
+    expect(sala).toEqual({
+      id: SALA_ID,
+      juego: "mus",
+      estado: "esperando",
+      capacidad: 2,
+      nombre: "Partida rápida",
+      tiene_contrasena: true,
+      servidor_direccion: "localhost:9000",
+    });
+    const insertSala = cliente.query.mock.calls[1];
+    expect(insertSala[1][0]).toBe("mus");
+    expect(insertSala[1][1]).toBe(2);
+    expect(insertSala[1][3]).toBe("Partida rápida");
+    expect(insertSala[1][4]).not.toBeNull();
+    // Se guarda el bcrypt del hash, nunca el hash tal cual.
+    expect(insertSala[1][4]).not.toBe("a".repeat(64));
+  });
+
   it("rechaza juegos que todavía no se pueden crear, sin abrir transacción", async () => {
     await expect(
-      lobbyService.crearSala({ juego: "mus" }, USUARIO_ID),
+      lobbyService.crearSala({ juego: "tute" }, USUARIO_ID),
     ).rejects.toMatchObject({
       status: 400,
     });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("rechaza una capacidad no admitida para el juego, sin abrir transacción", async () => {
+    await expect(
+      lobbyService.crearSala({ juego: "guinote", capacidad: 3 }, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un nombre de sala vacío o demasiado largo", async () => {
+    await expect(
+      lobbyService.crearSala({ juego: "guinote", nombre: "" }, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      lobbyService.crearSala(
+        { juego: "guinote", nombre: "x".repeat(41) },
+        USUARIO_ID,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un password_hash que no sea un SHA-256 hexadecimal", async () => {
+    await expect(
+      lobbyService.crearSala(
+        { juego: "guinote", password_hash: "no-es-un-hash" },
+        USUARIO_ID,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
@@ -147,6 +237,7 @@ describe("lobbyService.unirseSala", () => {
       capacidad: 4,
       creador_id: OTRO_ID,
       jugadores_actuales: 3,
+      servidor_direccion: "localhost:9000",
     });
     const insert = cliente.query.mock.calls.find(([sql]) =>
       sql.includes("INSERT INTO sala_participantes"),
@@ -235,5 +326,157 @@ describe("lobbyService.unirseSala", () => {
         sql.includes("INSERT INTO sala_participantes"),
       ),
     ).toBe(false);
+  });
+
+  it("403 si la sala tiene contraseña y no coincide (o no se manda)", async () => {
+    const bcrypt = require("bcrypt");
+    const hashAlmacenado = await bcrypt.hash("b".repeat(64), 4);
+    prepararCliente({
+      "FROM salas WHERE id": [
+        { ...salaEsperando, password_hash: hashAlmacenado },
+      ],
+    });
+
+    await expect(
+      lobbyService.unirseSala(SALA_ID, USUARIO_ID, "c".repeat(64)),
+    ).rejects.toMatchObject({ status: 403, message: "contraseña incorrecta" });
+    await expect(
+      lobbyService.unirseSala(SALA_ID, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      sqlsEjecutados().some((sql) =>
+        sql.includes("INSERT INTO sala_participantes"),
+      ),
+    ).toBe(false);
+  });
+
+  it("deja unirse si la contraseña coincide", async () => {
+    const bcrypt = require("bcrypt");
+    const hashAlmacenado = await bcrypt.hash("b".repeat(64), 4);
+    prepararCliente({
+      "FROM salas WHERE id": [
+        { ...salaEsperando, password_hash: hashAlmacenado },
+      ],
+      "FROM sala_participantes WHERE sala_id": [],
+    });
+
+    const sala = await lobbyService.unirseSala(
+      SALA_ID,
+      USUARIO_ID,
+      "b".repeat(64),
+    );
+
+    expect(sala.jugadores_actuales).toBe(1);
+  });
+});
+
+describe("lobbyService.salirSala", () => {
+  const salaEsperando = { id: SALA_ID, estado: "esperando" };
+
+  it("borra al usuario de la sala y la deja viva si quedan más participantes", async () => {
+    prepararCliente({
+      "FROM salas WHERE id": [salaEsperando],
+      "DELETE FROM sala_participantes": [],
+      "COUNT(*)::int AS total": [{ total: 1 }],
+    });
+    cliente.query.mockImplementation(async (sql) => {
+      if (sql.includes("DELETE FROM sala_participantes")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("FROM salas WHERE id")) return { rows: [salaEsperando] };
+      if (sql.includes("COUNT(*)::int AS total"))
+        return { rows: [{ total: 1 }] };
+      return { rows: [] };
+    });
+
+    await lobbyService.salirSala(SALA_ID, USUARIO_ID);
+
+    expect(sqlsEjecutados()).toEqual([
+      "BEGIN",
+      expect.stringContaining("FROM salas WHERE id"),
+      expect.stringContaining("DELETE FROM sala_participantes"),
+      expect.stringContaining("COUNT(*)::int AS total"),
+      "COMMIT",
+    ]);
+    expect(
+      sqlsEjecutados().some((sql) =>
+        sql.includes("DELETE FROM salas WHERE id"),
+      ),
+    ).toBe(false);
+  });
+
+  it("borra también la sala si no queda nadie dentro", async () => {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id"))
+          return { rows: [salaEsperando] };
+        if (sql.includes("DELETE FROM sala_participantes")) {
+          return { rows: [], rowCount: 1 };
+        }
+        if (sql.includes("COUNT(*)::int AS total"))
+          return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+
+    await lobbyService.salirSala(SALA_ID, USUARIO_ID);
+
+    expect(
+      sqlsEjecutados().some((sql) =>
+        sql.includes("DELETE FROM salas WHERE id"),
+      ),
+    ).toBe(true);
+    expect(sqlsEjecutados()).toContain("COMMIT");
+  });
+
+  it("rechaza un id que no es UUID sin tocar la base de datos", async () => {
+    await expect(
+      lobbyService.salirSala("no-es-uuid", USUARIO_ID),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("404 si la sala no existe", async () => {
+    prepararCliente({ "FROM salas WHERE id": [] });
+
+    await expect(
+      lobbyService.salirSala(SALA_ID, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(sqlsEjecutados()).toContain("ROLLBACK");
+  });
+
+  it("409 si la sala ya no está en espera", async () => {
+    prepararCliente({
+      "FROM salas WHERE id": [{ ...salaEsperando, estado: "en_curso" }],
+    });
+
+    await expect(
+      lobbyService.salirSala(SALA_ID, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("404 si el usuario no es participante de la sala", async () => {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id"))
+          return { rows: [salaEsperando] };
+        if (sql.includes("DELETE FROM sala_participantes")) {
+          return { rows: [], rowCount: 0 };
+        }
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+
+    await expect(
+      lobbyService.salirSala(SALA_ID, USUARIO_ID),
+    ).rejects.toMatchObject({
+      status: 404,
+      message: "no formas parte de esta sala",
+    });
+    expect(sqlsEjecutados()).toContain("ROLLBACK");
   });
 });

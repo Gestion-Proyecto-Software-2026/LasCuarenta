@@ -23,10 +23,10 @@ services:
       DATABASE_URL: postgres://cartas:cartas_dev_password@db:5432/cartas_online
       JWT_SECRET: cambia_esto_en_produccion
       # Secreto servidor-a-servidor para POST /interno/partidas — lo debe conocer
-      # también el servidor de partida (fuera de este compose, ver docs/arquitectura.md §5).
+      # también el servidor de partida (mismo valor que game-server, abajo).
       INTERNAL_API_SECRET: cambia_esto_tambien_en_produccion
       # Dirección del servidor de partida que se entrega al cliente como servidor_direccion.
-      # El servidor de partida corre fuera de Compose, en la máquina anfitriona.
+      # El cliente se conecta por ENet/UDP directamente a esta dirección (no pasa por nginx).
       GAME_SERVER_ADDRESS: localhost:9000
       PORT: 3000
       BCRYPT_SALT_ROUNDS: 10
@@ -40,6 +40,21 @@ services:
       RECOVERY_CODE_TTL_MIN: 15
     ports:
       - "3000:3000"
+
+  game-server:
+    build: ./game
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Mismos valores que `backend`, arriba: el servidor de partida verifica el
+      # JWT por su cuenta y autentica sus llamadas a /api/interno/* con el mismo
+      # secreto (docs/arquitectura.md §5).
+      JWT_SECRET: cambia_esto_en_produccion
+      INTERNAL_API_SECRET: cambia_esto_tambien_en_produccion
+      BACKEND_URL: http://backend:3000/api
+    ports:
+      - "9000:9000/udp"
 
 volumes:
   db_data:

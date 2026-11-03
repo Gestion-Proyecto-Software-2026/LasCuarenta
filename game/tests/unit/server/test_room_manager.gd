@@ -104,6 +104,21 @@ func test_juego_no_disponible_y_sala_terminada() -> void:
 	assert_eq(_ultimo_error(11), "La sala ya ha terminado")
 
 
+func test_participante_tardio_se_admite_tras_refrescar_la_sala() -> void:
+	# El creador (U0) se conecta por ENet justo tras crear la sala, cuando en el
+	# backend todavía no se ha unido nadie más: la sala se cachea con 1 solo
+	# participante. U1 se une después por REST (no simulado aquí, solo se
+	# refleja en el doble del backend) y debe poder entrar sin ser rechazado.
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	_unirse(10, U0)
+	assert_eq(expulsados, [], "el creador se sienta aunque falte el otro jugador")
+	backend.salas[SALA]["participantes"].append({"usuario_id": U1, "posicion": 1, "equipo": 1})
+	_unirse(11, U1)
+	assert_eq(expulsados, [], "un participante real no se rechaza por una caché desactualizada")
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 1)
+	assert_eq(_de(11, MensajesRed.PARTIDA_INICIADA).size(), 1)
+
+
 func test_capacidad_no_admitida_por_el_juego() -> void:
 	backend.salas[SALA]["capacidad"] = 3
 	_unirse(10, U0)

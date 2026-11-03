@@ -9,15 +9,34 @@ const authRoutes = require("./routes/auth");
 const lobbyRoutes = require("./routes/lobby");
 const historialRoutes = require("./routes/historial");
 const rankingRoutes = require("./routes/ranking");
+const internoRoutes = require("./routes/interno");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Log mínimo de cada petición (silenciado en los tests, donde NODE_ENV=test):
+// sirve para saber qué ruta se estaba sirviendo justo antes de un crash, que
+// con `restart: unless-stopped` (docker-compose.yml) reinicia el contenedor
+// en silencio y, si no, no queda rastro de qué petición lo causó.
+if (process.env.NODE_ENV !== "test") {
+  app.use((req, res, next) => {
+    const inicio = Date.now();
+    console.log(`-> ${req.method} ${req.originalUrl}`);
+    res.on("finish", () => {
+      console.log(
+        `<- ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - inicio}ms)`,
+      );
+    });
+    next();
+  });
+}
+
 app.use("/api/auth", authRoutes);
 app.use("/api/salas", lobbyRoutes);
 app.use("/api/usuarios", historialRoutes);
 app.use("/api/ranking", rankingRoutes);
+app.use("/api/interno", internoRoutes);
 
 // Documentación interactiva de la API — fuente: openapi.yaml (ver docs/analisis_funcional_app.md §5)
 const openapiDocument = yaml.load(

@@ -63,12 +63,27 @@ func listar_salas(juego: String = "guinote") -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_GET, "/salas?juego=" + juego.uri_encode())
 
 
-func crear_sala(juego: String = "guinote") -> Dictionary:
-	return await _pedir(HTTPClient.METHOD_POST, "/salas", {"juego": juego})
+## [param nombre] vacío usa el nombre por defecto del backend; [param password]
+## vacía crea la sala sin contraseña (ver docs/analisis_funcional_app.md §5).
+func crear_sala(juego: String = "guinote", capacidad: int = 4, nombre: String = "", password: String = "") -> Dictionary:
+	var cuerpo := {"juego": juego, "capacidad": capacidad}
+	if not nombre.is_empty():
+		cuerpo["nombre"] = nombre
+	if not password.is_empty():
+		cuerpo["password_hash"] = _hash_password(password)
+	return await _pedir(HTTPClient.METHOD_POST, "/salas", cuerpo)
 
 
-func unirse_sala(sala_id: String) -> Dictionary:
-	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/unirse" % sala_id.uri_encode())
+## [param password] solo hace falta si la sala tiene contraseña.
+func unirse_sala(sala_id: String, password: String = "") -> Dictionary:
+	var cuerpo: Variant = null
+	if not password.is_empty():
+		cuerpo = {"password_hash": _hash_password(password)}
+	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/unirse" % sala_id.uri_encode(), cuerpo)
+
+
+func salir_sala(sala_id: String) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/unirse" % sala_id.uri_encode())
 
 
 func _hash_password(password: String) -> String:

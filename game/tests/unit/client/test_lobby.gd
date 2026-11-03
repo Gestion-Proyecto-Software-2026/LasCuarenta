@@ -68,12 +68,29 @@ func test_oculta_el_estado_vacio_cuando_hay_salas() -> void:
 	assert_false(_etiqueta("EtiquetaVacia").visible)
 
 
-func test_crear_sala_llama_a_crear_y_refresca_la_lista() -> void:
+## Abre el diálogo de crear sala y pulsa su botón de confirmar (valores por
+## defecto: guinote, 4 jugadores, sin nombre ni contraseña).
+func _confirmar_dialogo_crear_sala() -> void:
 	_boton("BotonCrear").pressed.emit()
+	await wait_frames(1)
+	lobby.find_child("BotonConfirmarCrear", true, false).pressed.emit()
+
+
+func test_crear_sala_llama_a_crear_y_refresca_la_lista() -> void:
+	await _confirmar_dialogo_crear_sala()
 	await wait_frames(3)
 
-	assert_eq(api.llamadas[1], ["crear_sala", "guinote"])
+	assert_eq(api.llamadas[1], ["crear_sala", "guinote", 4, "", ""])
 	assert_eq(api.veces_llamado("listar_salas"), 2, "tras crear se vuelve a pedir la lista")
+
+
+func test_cancelar_el_dialogo_de_crear_sala_no_llama_a_la_api() -> void:
+	_boton("BotonCrear").pressed.emit()
+	await wait_frames(1)
+	lobby.find_child("BotonCancelar", true, false).pressed.emit()
+	await wait_frames(1)
+
+	assert_eq(api.veces_llamado("crear_sala"), 0)
 
 
 func test_unirse_envia_el_id_de_la_sala_de_esa_fila() -> void:
@@ -85,7 +102,7 @@ func test_unirse_envia_el_id_de_la_sala_de_esa_fila() -> void:
 	fila_b.find_child("BotonUnirse", true, false).pressed.emit()
 	await wait_frames(3)
 
-	assert_true(api.llamadas.has(["unirse_sala", SALA_B.id]))
+	assert_true(api.llamadas.has(["unirse_sala", SALA_B.id, ""]))
 
 
 func test_muestra_el_error_del_backend_si_no_se_puede_unir() -> void:
@@ -102,7 +119,7 @@ func test_muestra_el_error_del_backend_si_no_se_puede_unir() -> void:
 
 
 func test_los_botones_se_bloquean_mientras_hay_una_peticion() -> void:
-	_boton("BotonCrear").pressed.emit()
+	await _confirmar_dialogo_crear_sala()
 	assert_true(_boton("BotonCrear").disabled, "el botón crear debe bloquearse durante la petición")
 	await wait_frames(3)
 	assert_false(_boton("BotonCrear").disabled)

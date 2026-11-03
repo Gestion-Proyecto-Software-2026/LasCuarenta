@@ -44,8 +44,8 @@ func _todas_las_cartas(e: EstadoGuinote) -> Array[String]:
 
 # --- Reparto ---
 
-func test_solo_admite_cuatro_jugadores() -> void:
-	assert_eq(_motor().jugadores_admitidos(), [4])
+func test_admite_dos_o_cuatro_jugadores() -> void:
+	assert_eq(_motor().jugadores_admitidos(), [2, 4])
 
 
 func test_reparto_seis_cartas_por_jugador_pinta_y_mazo() -> void:

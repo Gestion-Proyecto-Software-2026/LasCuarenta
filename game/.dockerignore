@@ -1,0 +1,4 @@
+# Caché del editor: se regenera sola y puede quedar desactualizada respecto
+# al código copiado a la imagen (ver docs/mapa/cliente.md, nota sobre
+# class_name/preload).
+.godot/

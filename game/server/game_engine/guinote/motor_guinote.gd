@@ -7,7 +7,6 @@ extends MotorDeJuego
 ## cantes (20 y las 40), el Tute, el cambio del siete, el tanteo de las idas
 ## y la vuelta. Es el motor completo de §8.
 
-const NUM_JUGADORES := 4
 const CARTAS_POR_TANDA := 3
 const TANDAS_DE_REPARTO := 2
 
@@ -31,16 +30,18 @@ const TANTOS_PARA_GANAR := 100
 const MINIMO_TANTOS_DE_CARTAS := 30
 
 
+## 2 jugadores (cada uno su propio equipo, sin pareja) o 4 (2 parejas).
 func jugadores_admitidos() -> Array[int]:
-	return [NUM_JUGADORES]
+	return [2, 4]
 
 
 ## Sortea el dador, baraja, reparte 6 cartas a cada uno en dos tandas de 3
 ## (empezando por la derecha del dador) y vuelve la siguiente como pinta.
 ## No hay corte: con la baraja ya mezclada al azar no cambia nada.
-func _iniciar(_num_jugadores: int) -> EstadoPartida:
+func _iniciar(num_jugadores: int) -> EstadoPartida:
 	var estado := EstadoGuinote.new()
-	estado.dador = rng.randi_range(0, NUM_JUGADORES - 1)
+	estado.num_jugadores = num_jugadores
+	estado.dador = rng.randi_range(0, num_jugadores - 1)
 	_repartir(estado)
 	return estado
 
@@ -52,24 +53,27 @@ func _repartir(e: EstadoGuinote) -> void:
 	Baraja.barajar(cartas, rng)
 
 	e.manos = []
-	for jugador in NUM_JUGADORES:
+	for jugador in e.num_jugadores:
 		e.manos.append([] as Array[Carta])
 	for tanda in TANDAS_DE_REPARTO:
-		for i in NUM_JUGADORES:
-			var jugador := (e.dador + 1 + i) % NUM_JUGADORES
+		for i in e.num_jugadores:
+			var jugador := (e.dador + 1 + i) % e.num_jugadores
 			for c in CARTAS_POR_TANDA:
 				e.manos[jugador].append(cartas.pop_front())
 
 	e.pinta = cartas.pop_front()
 	e.palo_triunfo = e.pinta.palo
 	e.mazo = cartas
-	e.turno = (e.dador + 1) % NUM_JUGADORES
+	e.turno = (e.dador + 1) % e.num_jugadores
 	e.fase = EstadoGuinote.Fase.ROBO
 	e.baza_actual = []
 	e.ultima_baza = {}
 	e.cartas_ganadas = [[], []]
 	e.bazas_jugadas = 0
-	e.ultimo_cante_de = [-1, -1, -1, -1]
+	var ultimo_cante: Array[int] = []
+	ultimo_cante.resize(e.num_jugadores)
+	ultimo_cante.fill(-1)
+	e.ultimo_cante_de = ultimo_cante
 	e.siete_pendiente = -1
 
 
@@ -245,8 +249,8 @@ func _jugar_carta(e: EstadoGuinote, jugador_id: int, carta_id: String) -> void:
 			break
 	e.baza_actual.append({"jugador_id": jugador_id, "carta": carta})
 
-	if e.baza_actual.size() < NUM_JUGADORES:
-		e.turno = (e.turno + 1) % NUM_JUGADORES
+	if e.baza_actual.size() < e.num_jugadores:
+		e.turno = (e.turno + 1) % e.num_jugadores
 		return
 	_cerrar_baza(e)
 
@@ -264,18 +268,18 @@ func _cerrar_baza(e: EstadoGuinote) -> void:
 		_comprobar_fin_de_vuelta(e)
 		if ha_terminado(e):
 			return
-	elif e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA:
+	elif e.bazas_jugadas == EstadoGuinote.bazas_por_partida(e.num_jugadores):
 		_cerrar_idas(e)
 		return
 	if e.fase != EstadoGuinote.Fase.ROBO:
 		return
-	if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
+	if e.bazas_jugadas == EstadoGuinote.bazas_con_robo(e.num_jugadores):
 		# Último robo: la pinta se la llevará un rival del ganador. Antes, quien
-		# tenga el 7 de triunfo en la pareja ganadora decide si lo cambia.
-		for i: int in [0, 2]:
-			var companero: int = (ganador + i) % NUM_JUGADORES
-			if puede_cambiar_siete(e, companero):
-				e.siete_pendiente = companero
+		# tenga el 7 de triunfo en el equipo ganador (su pareja a 4, él mismo a 2)
+		# decide si lo cambia.
+		for jugador in e.num_jugadores:
+			if equipo_de(jugador) == equipo_de(ganador) and puede_cambiar_siete(e, jugador):
+				e.siete_pendiente = jugador
 				return
 	_terminar_robo(e)
 
@@ -285,15 +289,15 @@ func _cerrar_baza(e: EstadoGuinote) -> void:
 func _terminar_robo(e: EstadoGuinote) -> void:
 	e.siete_pendiente = -1
 	_robar(e, e.ultima_baza["ganador"])
-	if e.bazas_jugadas == EstadoGuinote.BAZAS_CON_ROBO:
+	if e.bazas_jugadas == EstadoGuinote.bazas_con_robo(e.num_jugadores):
 		e.fase = EstadoGuinote.Fase.ARRASTRE
 
 
 ## Cada jugador roba una carta, empezando por el ganador de la baza y en el
 ## sentido del juego. La pinta se roba la última.
 func _robar(e: EstadoGuinote, ganador: int) -> void:
-	for i in NUM_JUGADORES:
-		var jugador := (ganador + i) % NUM_JUGADORES
+	for i in e.num_jugadores:
+		var jugador := (ganador + i) % e.num_jugadores
 		if not e.mazo.is_empty():
 			e.manos[jugador].append(e.mazo.pop_front())
 		elif e.pinta != null:
@@ -395,7 +399,7 @@ func tanteo_de_la_mano(e: EstadoGuinote) -> Dictionary:
 		if cante["mano"] == e.mano_actual:
 			cantes[equipo_de(cante["jugador_id"])] += cante["puntos"]
 	var diez_ultimas: Array[int] = [0, 0]
-	if e.bazas_jugadas == EstadoGuinote.BAZAS_POR_PARTIDA:
+	if e.bazas_jugadas == EstadoGuinote.bazas_por_partida(e.num_jugadores):
 		diez_ultimas[equipo_de(e.ultima_baza["ganador"])] = PUNTOS_ULTIMA_BAZA
 	var total: Array[int] = []
 	for equipo in 2:
@@ -442,7 +446,7 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 	var bazas_por_equipo: Array[int] = []
 	for cartas: Array in e.cartas_ganadas:
 		@warning_ignore("integer_division")
-		bazas_por_equipo.append(cartas.size() / NUM_JUGADORES)
+		bazas_por_equipo.append(cartas.size() / e.num_jugadores)
 	var pinta: Variant = null
 	if e.pinta != null:
 		pinta = e.pinta.id

@@ -2,6 +2,7 @@ jest.mock("../src/services/lobbyService", () => ({
   listarSalas: jest.fn(),
   crearSala: jest.fn(),
   unirseSala: jest.fn(),
+  salirSala: jest.fn(),
 }));
 
 const request = require("supertest");
@@ -104,7 +105,40 @@ describe("POST /api/salas/:id/unirse", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.jugadores_actuales).toBe(2);
-    expect(lobbyService.unirseSala).toHaveBeenCalledWith(SALA_ID, "u1");
+    expect(lobbyService.unirseSala).toHaveBeenCalledWith(
+      SALA_ID,
+      "u1",
+      undefined,
+    );
+  });
+
+  it("pasa el password_hash del body al servicio", async () => {
+    lobbyService.unirseSala.mockResolvedValue({ id: SALA_ID });
+
+    await request(app)
+      .post(`/api/salas/${SALA_ID}/unirse`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ password_hash: "a".repeat(64) });
+
+    expect(lobbyService.unirseSala).toHaveBeenCalledWith(
+      SALA_ID,
+      "u1",
+      "a".repeat(64),
+    );
+  });
+
+  it("403 con contraseña incorrecta", async () => {
+    lobbyService.unirseSala.mockRejectedValue(
+      new ErrorHttp(403, "contraseña incorrecta"),
+    );
+
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/unirse`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ password_hash: "b".repeat(64) });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "contraseña incorrecta" });
   });
 
   it("409 cuando la sala está llena", async () => {
@@ -118,6 +152,32 @@ describe("POST /api/salas/:id/unirse", () => {
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: "la sala está llena" });
+  });
+});
+
+describe("DELETE /api/salas/:id/unirse", () => {
+  it("204 y pasa el id del usuario autenticado al servicio", async () => {
+    lobbyService.salirSala.mockResolvedValue(undefined);
+
+    const res = await request(app)
+      .delete(`/api/salas/${SALA_ID}/unirse`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(204);
+    expect(lobbyService.salirSala).toHaveBeenCalledWith(SALA_ID, "u1");
+  });
+
+  it("404 si no eres participante de la sala", async () => {
+    lobbyService.salirSala.mockRejectedValue(
+      new ErrorHttp(404, "no formas parte de esta sala"),
+    );
+
+    const res = await request(app)
+      .delete(`/api/salas/${SALA_ID}/unirse`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "no formas parte de esta sala" });
   });
 });
 

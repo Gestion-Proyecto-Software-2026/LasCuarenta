@@ -64,8 +64,8 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 |---|---|---|
 | `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro` | Contraseña siempre cifrada (bcrypt o similar) |
 | `codigos_recuperacion` | `id`, `usuario_id` → `usuarios.id`, `codigo_hash`, `expira_en`, `usado`, `creado_en` | Código de un solo uso para `/auth/restablecer` (PBI-01); se envía en claro por correo, solo se guarda su SHA-256 |
-| `salas` | `id`, `juego` (`guinote`/`mus`/`tute`), `estado` (`esperando`/`en_curso`/`finalizada`), `capacidad`, `creador_id` → `usuarios.id`, `fecha_creacion` | |
-| `sala_participantes` | `sala_id`, `usuario_id`, `posicion` (0-3), `equipo` (0/1, solo aplica a Guiñote/Tute por parejas) | Tabla puente |
+| `salas` | `id`, `juego` (`guinote`/`mus`/`tute`), `estado` (`esperando`/`en_curso`/`finalizada`), `capacidad` (2 o 4), `creador_id` → `usuarios.id`, `nombre` (1-40 caracteres, por defecto "Sala de Guiñote"), `password_hash` (nullable; bcrypt del SHA-256 que envía el cliente, igual que `usuarios.password_hash`), `fecha_creacion` | |
+| `sala_participantes` | `sala_id`, `usuario_id`, `posicion` (0-3 a 4 jugadores, 0-1 a 2), `equipo` (0/1; con pareja a 4, cada jugador el suyo a 2 — `equipo_de(posicion) = posicion % 2`, igual en Guiñote y Mus) | Tabla puente |
 | `partidas` | `id`, `sala_id`, `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json` | Registro histórico de una partida ya terminada |
 | `partida_jugadores` | `partida_id`, `usuario_id`, `equipo`, `puntos_obtenidos`, `gano` (booleano) | Base para historial (PBI-06) y ranking (PBI-07) |
 
@@ -96,16 +96,23 @@ Todas las rutas de lobby exigen `Authorization: Bearer <token>`.
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
-| GET | `/salas?juego=guinote` | — | `200 [{ id, juego, estado, jugadores_actuales, capacidad, creador_id }]` — solo salas `esperando` con plazas libres |
-| POST | `/salas` | `{ juego }` | `201 { id, juego, estado, capacidad, servidor_direccion }` — solo `guinote` por ahora |
-| POST | `/salas/:id/unirse` | — | `200 { id, juego, estado, capacidad, creador_id, jugadores_actuales }` |
+| GET | `/salas?juego=guinote` | — | `200 [{ id, juego, estado, nombre, tiene_contrasena, jugadores_actuales, capacidad, creador_id, jugadores }]` — solo salas `esperando` con plazas libres |
+| POST | `/salas` | `{ juego, capacidad?, nombre?, password_hash? }` | `201 { id, juego, estado, capacidad, nombre, tiene_contrasena, servidor_direccion }` — `guinote` o `mus` |
+| POST | `/salas/:id/unirse` | `{ password_hash? }` (solo si la sala tiene contraseña) | `200 { id, juego, estado, capacidad, creador_id, jugadores_actuales, servidor_direccion }` |
+| DELETE | `/salas/:id/unirse` | — | `204` — abandona una sala en espera (PBI-03) |
 | POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200` — solo el creador puede invocarlo (PBI-09, pendiente) |
 
-Errores de lobby: `400` (`juego` no admitido o `:id` que no es UUID), `401` (sin token o token inválido), `404` (la sala no existe, solo en `unirse`), `409` (la sala no está `esperando`, el usuario ya está sentado en ella, o no quedan plazas). Cuerpo de error siempre `{ error: "mensaje" }`.
+Errores de lobby: `400` (`juego` no admitido, capacidad no admitida para ese juego, nombre fuera de 1-40 caracteres, `password_hash` que no es un SHA-256 hexadecimal, o `:id` que no es UUID), `401` (sin token o token inválido), `403` (`password_hash` no coincide con el de la sala, o no se manda habiéndola), `404` (la sala no existe, o en `DELETE .../unirse` cuando el usuario no es participante de ella), `409` (la sala no está `esperando`, el usuario ya está sentado en ella, o no quedan plazas). Cuerpo de error siempre `{ error: "mensaje" }`.
 
-Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el backend asigna la primera posición libre (0-3). Las plazas se bloquean con `SELECT ... FOR UPDATE`, así que dos uniones simultáneas no pueden ocupar la misma.
+Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el backend asigna la primera posición libre (0 a `capacidad`-1). Las plazas se bloquean con `SELECT ... FOR UPDATE`, así que dos uniones simultáneas no pueden ocupar la misma.
 
-`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve al crear la sala, y el cliente la guarda para usarla cuando la sala se complete. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
+`capacidad` es 2 o 4 (tanto en Guiñote como en Mus); si se omite al crear, 4 por defecto, igual que antes de admitir la variante a 2 jugadores. `nombre` es libre (1-40 caracteres); si se omite, "Sala de Guiñote". `password_hash` es opcional: si la sala se crea con él, hace falta mandar el mismo valor al unirse (`POST /salas/:id/unirse`); el backend nunca lo devuelve, solo el booleano `tiene_contrasena`. Es el mismo SHA-256 en hexadecimal que el cliente ya calcula para la contraseña de la cuenta (§5, Autenticación), sobre el que el backend aplica `bcrypt` antes de guardarlo.
+
+`jugadores` (solo en `GET /salas`, para que el lobby muestre quién hay en cada sala antes de unirse) es un array `[{ usuario_id, nombre_visible, posicion }]`, uno por participante actual, ordenado por posición.
+
+`DELETE /salas/:id/unirse` saca al usuario autenticado de `sala_participantes`. Solo se puede abandonar una sala `esperando` (`409` si no lo está); `404` si el usuario no es participante. Si al salir no queda nadie en la sala, esta se borra entera, para que abandonar la sala de espera (p. ej. tras un error de conexión al servidor de partida, §6) no deje salas fantasma en el lobby.
+
+`servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve tanto al crear la sala como al unirse a ella, para que cualquiera de los dos pueda conectar. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
 ### Historial y ranking (PBI-06, PBI-07)
 | Método | Ruta | Respuesta |
@@ -119,7 +126,7 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 | GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
 | POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, ... } }` |
 
-En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend puede rellenar `partidas` y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`). Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
+En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend rellena `partidas` (+ `resultado_json`) y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o `404` si la sala no existe. Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
 
 `GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo }] }` o `404` si la sala no existe. La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
@@ -291,6 +298,7 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
   - Siempre termina antes de su 10ª baza: entre idas y vuelta se reparten al menos 260 tantos, así que alguna pareja supera los 100, y eso solo puede pasar al ganar una baza o al cantar tras ganarla, que es justo cuando se comprueba.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
 - **Estado:** el motor está completo (reparto, robo, arrastre, cantes, Tute, cambio del siete, tanteo y vuelta) y registrado en `MOTORES` de `main_server.gd` como `guinote`. `calcular_resultado` devuelve `{ equipo_ganador, puntos_por_equipo, motivo, manos }`: `motivo` es `tute`, `tantos` o `vuelta`, y `manos` desglosa las idas y, si la hubo, la vuelta en `cartas`, `cantes`, `diez_ultimas` y `total`.
+- **Variante a 2 jugadores:** `jugadores_admitidos()` devuelve `[2, 4]`. Sin pareja: `equipo_de(jugador_id) = jugador_id % 2` ya da a cada jugador su propio equipo (0 y 1), así que cantes, cambio del siete y tanteo funcionan sin cambios de reglas, solo iterando sobre `num_jugadores` en vez de una constante fija. Confirmado con el equipo (⚠️ asunción, no un texto de reglamento aportado): mismo mecanismo de reparto y robo que a 4 (6 cartas por jugador, se repone 1 por jugador tras cada baza hasta agotar el mazo), lo que da `14` bazas con robo y `20` bazas por partida (a 4 son `4` y `10`, derivadas de la misma fórmula: `(40 - num_jugadores·6) / num_jugadores` y `40 / num_jugadores`); existe vuelta igual que a 4; se puede cantar Tute igual que a 4.
 
 ---
 

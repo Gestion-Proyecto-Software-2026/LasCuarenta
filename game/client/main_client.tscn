@@ -1,3 +1,6 @@
-[gd_scene format=3 uid="uid://bds4xisglem6m"]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://client/main_client.gd" id="1_main_client"]
 
 [node name="MainClient" type="Node" unique_id=586675292]
+script = ExtResource("1_main_client")

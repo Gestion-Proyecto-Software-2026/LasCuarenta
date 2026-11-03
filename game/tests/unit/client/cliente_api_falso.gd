@@ -4,10 +4,12 @@ extends Node
 
 var autenticado := true
 var usuario: Dictionary = {"nombre_visible": "Ana"}
+var token := ""
 
 var respuesta_listar: Dictionary = {"ok": true, "codigo": 200, "datos": []}
 var respuesta_crear: Dictionary = {"ok": true, "codigo": 201, "datos": {}}
 var respuesta_unirse: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
+var respuesta_salir: Dictionary = {"ok": true, "codigo": 204, "datos": null}
 
 ## Lista de [nombre_de_funcion, argumento] en el orden en que se llamaron.
 var llamadas: Array = []
@@ -30,16 +32,22 @@ func listar_salas(juego: String = "guinote") -> Dictionary:
 	return respuesta_listar
 
 
-func crear_sala(juego: String = "guinote") -> Dictionary:
-	llamadas.append(["crear_sala", juego])
+func crear_sala(juego: String = "guinote", capacidad: int = 4, nombre: String = "", password: String = "") -> Dictionary:
+	llamadas.append(["crear_sala", juego, capacidad, nombre, password])
 	await _esperar()
 	return respuesta_crear
 
 
-func unirse_sala(sala_id: String) -> Dictionary:
-	llamadas.append(["unirse_sala", sala_id])
+func unirse_sala(sala_id: String, password: String = "") -> Dictionary:
+	llamadas.append(["unirse_sala", sala_id, password])
 	await _esperar()
 	return respuesta_unirse
+
+
+func salir_sala(sala_id: String) -> Dictionary:
+	llamadas.append(["salir_sala", sala_id])
+	await _esperar()
+	return respuesta_salir
 
 
 func _esperar() -> void:
