@@ -8,9 +8,16 @@ extends EstadoPartida
 
 enum Fase { ROBO, ARRASTRE }
 
-## Número de bazas "con robada"; después empieza el arrastre.
-const BAZAS_CON_ROBO := 4
-const BAZAS_POR_PARTIDA := 10
+## Número de bazas "con robada" antes de empezar el arrastre: se reparten 6
+## cartas a cada jugador + la pinta, y el resto del mazo se reparte en bazas de
+## "num_jugadores" cartas (una por jugador) hasta agotarlo.
+static func bazas_con_robo(num_jugadores: int) -> int:
+	return (40 - num_jugadores * 6) / num_jugadores
+
+
+## Total de bazas de una mano: cada una de las 40 cartas se juega una vez.
+static func bazas_por_partida(num_jugadores: int) -> int:
+	return 40 / num_jugadores
 
 enum Mano { IDAS, VUELTA }
 
@@ -48,6 +55,8 @@ var bazas_jugadas: int = 0
 var cantes: Array[Dictionary] = []
 ## Valor de bazas_jugadas cuando cantó cada jugador por última vez (-1 si nunca):
 ## cada miembro de la pareja puede cantar una vez por baza ganada.
+## MotorGuinote._repartir lo redimensiona a num_jugadores; el valor por
+## defecto solo importa para estados construidos a mano en tests (num_jugadores=4).
 var ultimo_cante_de: Array[int] = [-1, -1, -1, -1]
 ## Si alguien ha cantado Tute: { "jugador_id": int, "figura": "reyes" | "sotas" }.
 var tute: Dictionary = {}
