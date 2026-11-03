@@ -14,6 +14,9 @@ var tween_actual: Tween
 var z_index_base: int = 0 
 var pos_base: Vector2 = Vector2.ZERO # Guardará su posición en el abanico
 var rot_base: float = 0.0 # Guardará su rotación en el abanico
+## Escala en reposo. La mesa del Tute la baja para que quepan 4 jugadores; el
+## resto de estados (hover, clic, arrastre) escalan en proporción a ella.
+var escala_base: float = 0.72
 
 # Definimos los posibles estados de la carta
 enum State { IDLE, HOVER, CLICKED, DRAG }
@@ -102,7 +105,7 @@ func cambiar_estado(nuevo_estado: State):
 			
 			# Volvemos a su posición, rotación y escala base exactas
 			tween_actual = FuncionesGlobales.lanzar_tweens_simultaneos([
-				{"prop": "scale", "valor": Vector2(0.72, 0.72), "dur": 0.2},
+				{"prop": "scale", "valor": Vector2.ONE * escala_base, "dur": 0.2},
 				{"prop": "modulate", "valor": Color(1,1,1,1), "dur": 0.2},
 				{"prop": "position", "valor": pos_base, "dur": 0.2},
 				{"prop": "rotation_degrees", "valor": rot_base, "dur": 0.2}
@@ -115,7 +118,7 @@ func cambiar_estado(nuevo_estado: State):
 			
 			# Subimos 20 px respecto a su pos_base (absoluto, no relativo)
 			tween_actual = FuncionesGlobales.lanzar_tweens_simultaneos([
-				{"prop": "scale", "valor": Vector2(0.8, 0.8), "dur": 0.1},
+				{"prop": "scale", "valor": Vector2.ONE * escala_base * (0.8 / 0.72), "dur": 0.1},
 				{"prop": "position", "valor": pos_base + Vector2(0, -20), "dur": 0.1},
 				{"prop": "rotation_degrees", "valor": rot_base, "dur": 0.1}
 			], self)
@@ -123,7 +126,7 @@ func cambiar_estado(nuevo_estado: State):
 		State.CLICKED:
 			Label_carta.text = "Clicked"
 			tween_actual = FuncionesGlobales.lanzar_tweens_simultaneos([
-				{"prop": "scale", "valor": Vector2(0.75, 0.75), "dur": 0.05}
+				{"prop": "scale", "valor": Vector2.ONE * escala_base * (0.75 / 0.72), "dur": 0.05}
 			], self)
 
 		State.DRAG:
@@ -131,7 +134,7 @@ func cambiar_estado(nuevo_estado: State):
 			z_index = 101 
 			tween_actual = FuncionesGlobales.lanzar_tweens_simultaneos([
 				{"prop": "rotation", "valor": 0.0, "dur": 0.1},
-				{"prop": "scale", "valor": Vector2(0.8, 0.8), "dur": 0.1}
+				{"prop": "scale", "valor": Vector2.ONE * escala_base * (0.8 / 0.72), "dur": 0.1}
 			], self)
 
 # Eventos de Área
