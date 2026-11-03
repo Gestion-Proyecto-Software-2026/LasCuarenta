@@ -1,0 +1,44 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://client/ui/partida_guinote_2p/carta_guinote.gd" id="1_carta"]
+[ext_resource type="Shader" path="res://client/ui/partida_guinote_2p/shader_borde_carta.gdshader" id="2_shader"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
+size = Vector2(209.72195, 318.05518)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_1"]
+shader = ExtResource("2_shader")
+shader_parameter/radio_esquina = 0.12
+shader_parameter/opacidad_centro = 0.0
+shader_parameter/opacidad_borde = 0.13
+
+[node name="CartaGuinote" type="Sprite2D"]
+scale = Vector2(0.72, 0.72)
+script = ExtResource("1_carta")
+
+[node name="Area2D" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D"]
+position = Vector2(0.69, 0.69)
+shape = SubResource("RectangleShape2D_1")
+
+[node name="Borde" type="Control" parent="."]
+visible = false
+z_index = -1
+layout_mode = 3
+anchors_preset = 0
+offset_left = -112.5
+offset_top = -168.06
+offset_right = 113.89
+offset_bottom = 165.28
+mouse_filter = 2
+
+[node name="Relleno" type="ColorRect" parent="Borde"]
+material = SubResource("ShaderMaterial_1")
+color = Color(1, 1, 1, 1)
+offset_right = 226.39
+offset_bottom = 333.33
+mouse_filter = 2
+
+[connection signal="mouse_entered" from="Area2D" to="." method="_on_area_2d_mouse_entered"]
+[connection signal="mouse_exited" from="Area2D" to="." method="_on_area_2d_mouse_exited"]

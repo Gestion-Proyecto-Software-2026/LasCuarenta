@@ -1,0 +1,134 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://client/ui/partida_guinote_2p/partida_guinote_2p.gd" id="1_partida2p"]
+[ext_resource type="PackedScene" path="res://client/ui/partida_guinote_2p/tapete_guinote.tscn" id="2_tapete"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/panel_cartulina.tres" id="3_panel"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_normal.tres" id="4_boton_n"]
+[ext_resource type="Font" path="res://client/ui/theme/fuente_titulo_bold.tres" id="5_fuente_bold"]
+
+[node name="PartidaGuinote2p" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_partida2p")
+
+[node name="Fondo" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.055, 0.231, 0.165, 1)
+
+[node name="TapeteGuinote" parent="." instance=ExtResource("2_tapete")]
+unique_name_in_owner = true
+layout_mode = 1
+
+[node name="Info" type="VBoxContainer" parent="."]
+layout_mode = 1
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 760.0
+offset_bottom = 90.0
+
+[node name="EtiquetaFase" type="Label" parent="Info"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Fase: ? · Mano: ? · Triunfo: ?"
+
+[node name="EtiquetaTanteo" type="Label" parent="Info"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+
+[node name="EtiquetaCantes" type="Label" parent="Info"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+autowrap_mode = 3
+text = ""
+
+[node name="EtiquetaError" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 96.0
+offset_bottom = 120.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.945, 0.302, 0.267, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+
+[node name="AccionesEspeciales" type="HBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.7
+anchor_right = 0.5
+anchor_bottom = 0.7
+offset_left = -260.0
+offset_top = -40.0
+offset_right = 260.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="PanelResultado" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = ExtResource("3_panel")
+
+[node name="Contenido" type="VBoxContainer" parent="PanelResultado"]
+layout_mode = 2
+custom_minimum_size = Vector2(360, 0)
+theme_override_constants/separation = 16
+
+[node name="Titulo" type="Label" parent="PanelResultado/Contenido"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_fonts/font = ExtResource("5_fuente_bold")
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
+text = "PARTIDA TERMINADA"
+
+[node name="EtiquetaResultado" type="Label" parent="PanelResultado/Contenido"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+autowrap_mode = 3
+text = ""
+
+[node name="BotonVolverLobby" type="Button" parent="PanelResultado/Contenido"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 44)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_fonts/font = ExtResource("5_fuente_bold")
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("4_boton_n")
+text = "VOLVER AL LOBBY"
