@@ -79,20 +79,20 @@ En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload
 | Autenticación | JWT (`jsonwebtoken`) + `bcrypt` para contraseñas | Verificado en `backend/src/middleware/auth.js` |
 | Envío de correo | `nodemailer` (SMTP) | Solo para `POST /auth/recuperar`; credenciales en `SMTP_*` (`backend/.env.example`) |
 | Proxy inverso / TLS | nginx + Let's Encrypt (Certbot) | Solo delante del backend REST (`infra/nginx/nginx.conf`) |
-| Orquestación local/dev | Docker Compose | Levanta `db` + `backend` (`docker-compose.yml`); el cliente y el servidor de partida se ejecutan fuera de Compose (Godot no está dockerizado en este repo) |
+| Orquestación local/dev | Docker Compose | Levanta `db` + `backend` + `game-server` (`docker-compose.yml`, `game/Dockerfile`); solo el cliente se ejecuta fuera de Compose (no tiene sentido dockerizar una app de escritorio) |
 
 ---
 
 ## 4. Entornos y despliegue
 
 **Desarrollo local:**
-1. `docker compose up -d` — levanta `db` (Postgres, puerto expuesto `5432`) y `backend` (puerto `3000`), con `JWT_SECRET` y `DATABASE_URL` de ejemplo en el propio `docker-compose.yml`.
+1. `docker compose up -d` — levanta `db` (Postgres, puerto expuesto `5432`), `backend` (puerto `3000`) y `game-server` (puerto `9000/udp`), con `JWT_SECRET`/`INTERNAL_API_SECRET`/`DATABASE_URL` de ejemplo en el propio `docker-compose.yml` (mismo valor de `JWT_SECRET`/`INTERNAL_API_SECRET` en `backend` y `game-server`, o el servidor de partida no arranca).
 2. Las migraciones de `backend/migrations/` se aplican solas la primera vez, cuando PostgreSQL crea la base de datos (están montadas en `docker-entrypoint-initdb.d`). Con un volumen que ya existe no se vuelven a ejecutar: una migración nueva se aplica a mano, o se empieza de cero con `docker compose down -v` (borra los datos).
-3. El servidor de partida y el cliente se lanzan aparte con el editor/CLI de Godot — no están en `docker-compose.yml`. El servidor necesita los mismos secretos que el backend de `docker-compose.yml`, o no arranca:
+3. `game/Dockerfile` descarga el binario headless de Godot y, en el build, corre `godot --headless --editor --quit --path .` una vez para importar los assets y generar `.godot/global_script_class_cache.cfg` — sin ese paso, los scripts con `class_name` (`MotorDeJuego`, `RoomManager`, `MensajesRed`...) no se resuelven y el contenedor no arranca (mismo problema que documenta `docs/mapa/cliente.md` para GUT headless, pero aquí sin ningún caché previo porque el contenedor nunca pasó por el editor). Para lanzar el servidor de partida fuera de Docker (p. ej. para depurar), sigue sirviendo:
    ```bash
    JWT_SECRET=cambia_esto_en_produccion INTERNAL_API_SECRET=cambia_esto_tambien_en_produccion godot --headless --path game res://server/main_server.tscn
    ```
-   `BACKEND_URL` es opcional (por defecto `http://localhost:3000/api`).
+   `BACKEND_URL` es opcional (por defecto `http://localhost:3000/api`; dentro de Compose, `game-server` usa `http://backend:3000/api`).
 4. Para arrancar el backend fuera de Docker (`npm run dev` en `backend/`), copiad `backend/.env.example` a `backend/.env`: `src/index.js` lo carga al arrancar, y las variables que ya existan en el entorno tienen prioridad.
 
 **Producción (según `infra/nginx/nginx.conf`):**
