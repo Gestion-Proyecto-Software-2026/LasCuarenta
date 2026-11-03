@@ -33,11 +33,25 @@ router.post("/", async (req, res, next) => {
   }
 });
 
-// POST /api/salas/:id/unirse (PBI-02)
+// POST /api/salas/:id/unirse (PBI-02); { password_hash } solo si la sala tiene contraseña
 router.post("/:id/unirse", async (req, res, next) => {
   try {
-    const sala = await lobbyService.unirseSala(req.params.id, req.usuario.id);
+    const sala = await lobbyService.unirseSala(
+      req.params.id,
+      req.usuario.id,
+      (req.body || {}).password_hash,
+    );
     res.status(200).json(sala);
+  } catch (err) {
+    manejarError(err, res, next);
+  }
+});
+
+// DELETE /api/salas/:id/unirse — abandonar una sala en espera (PBI-03)
+router.delete("/:id/unirse", async (req, res, next) => {
+  try {
+    await lobbyService.salirSala(req.params.id, req.usuario.id);
+    res.status(204).end();
   } catch (err) {
     manejarError(err, res, next);
   }

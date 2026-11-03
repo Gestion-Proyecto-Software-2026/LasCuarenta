@@ -173,7 +173,13 @@ paths:
                 - id: 11111111-1111-4111-8111-111111111111
                   juego: guinote
                   estado: esperando
+                  nombre: Partida rápida
+                  tiene_contrasena: false
                   jugadores_actuales: 2
+                  jugadores:
+                    - usuario_id: 22222222-2222-4222-8222-222222222222
+                      nombre_visible: Ana
+                      posicion: 0
                   capacidad: 4
                   creador_id: 22222222-2222-4222-8222-222222222222
         "400":
@@ -182,10 +188,13 @@ paths:
           $ref: "#/components/responses/NoAutenticado"
     post:
       tags: [Lobby]
-      summary: Crea una sala de Guiñote y sienta al creador
+      summary: Crea una sala y sienta al creador
       description: >
-        Crea una sala de 4 plazas y sienta al usuario autenticado en la posición 0.
-        Solo se admite `guinote` por ahora (mus y tute devuelven 400 hasta su PBI).
+        Sienta al usuario autenticado en la posición 0. Se admite `guinote` o `mus`
+        (tute devuelve 400 hasta tener motor). `capacidad` es 2 o 4 (4 por defecto si
+        se omite); ambos juegos admiten las dos. `nombre` es libre (1 a 40 caracteres,
+        "Sala de Guiñote" por defecto); `password_hash` es opcional y, si se manda,
+        protege la sala (debe coincidir al unirse, ver `POST /salas/{id}/unirse`).
         La respuesta incluye `servidor_direccion`, que el cliente usará cuando la sala se complete.
       security:
         - bearerAuth: []
@@ -199,9 +208,23 @@ paths:
               properties:
                 juego:
                   type: string
-                  enum: [guinote]
+                  enum: [guinote, mus]
+                capacidad:
+                  type: integer
+                  enum: [2, 4]
+                  default: 4
+                nombre:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                  default: Sala de Guiñote
+                password_hash:
+                  type: string
+                  description: SHA-256 en hexadecimal (64 caracteres) de la contraseña de la sala; el cliente nunca manda la contraseña en claro.
             example:
               juego: guinote
+              capacidad: 2
+              nombre: Partida rápida
       responses:
         "201":
           description: Sala creada
@@ -222,10 +245,24 @@ paths:
         La sala debe estar en `esperando`, el usuario no puede estar ya sentado en ella
         y debe quedar al menos una plaza libre. La operación es transaccional y bloquea
         la fila de la sala, así que dos uniones simultáneas no pueden ocupar la misma plaza.
+        La respuesta incluye `servidor_direccion` para que quien se une también pueda
+        conectar por ENet, igual que a quien crea la sala. Si la sala tiene contraseña,
+        el body debe incluir `password_hash` (el mismo SHA-256 de 64 caracteres hex que
+        calcula el cliente; nunca viaja en claro) coincidiendo con el de la sala.
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/SalaId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password_hash:
+                  type: string
+                  description: Solo necesario si la sala tiene contraseña.
       responses:
         "200":
           description: Usuario sentado; devuelve la sala con el recuento actualizado
@@ -241,6 +278,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/NoAutenticado"
+        "403":
+          description: La sala tiene contraseña y no coincide (o no se mandó)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: La sala no existe
           content:
@@ -265,6 +308,40 @@ paths:
                 no_admite:
                   value:
                     error: la sala no admite nuevos jugadores
+    delete:
+      tags: [Lobby]
+      summary: Abandona una sala en espera
+      description: >
+        Quita al usuario autenticado de `sala_participantes`. Si tras salir no queda
+        nadie en la sala, esta se borra entera (evita salas fantasma abandonadas). Solo
+        se puede abandonar una sala en `esperando`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      responses:
+        "204":
+          description: Abandonada (sin cuerpo)
+        "400":
+          description: El id no es un UUID válido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "404":
+          description: La sala no existe, o el usuario no es participante de ella
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: La sala ya no está en espera (partida en curso o finalizada)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /salas/{id}/expulsar:
     post:
@@ -340,7 +417,9 @@ paths:
     get:
       tags: [Interno]
       summary: Composición de una sala (solo el servidor de partida)
-      description: "⚠️ Pendiente de implementar (responde 501)."
+      description: >
+        `equipo` se calcula como `posicion % 2` (no depende de que
+        `sala_participantes.equipo` esté relleno).
       security:
         - internalSecret: []
       parameters:
@@ -368,7 +447,12 @@ paths:
     post:
       tags: [Interno]
       summary: Persiste el resultado final de una partida (solo el servidor de partida)
-      description: "⚠️ Pendiente de implementar (responde 501)."
+      description: >
+        Rellena `partidas` (+ `resultado_json`) y `partida_jugadores`
+        (`gano = equipo == resultado.equipo_ganador`,
+        `puntos_obtenidos = resultado.puntos_por_equipo[equipo]`), y pasa la sala a
+        `finalizada`. Todo en una transacción; no hay reintento si falla (el servidor
+        de partida solo loguea el error).
       security:
         - internalSecret: []
       requestBody:
@@ -380,8 +464,20 @@ paths:
       responses:
         "201":
           description: Resultado registrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
         "401":
           description: X-Internal-Secret ausente o incorrecto
+        "404":
+          description: La sala no existe
 
   /health:
     get:
@@ -538,6 +634,38 @@ components:
         creador_id:
           type: string
           format: uuid
+        nombre:
+          type: string
+          example: Partida rápida
+        tiene_contrasena:
+          type: boolean
+          description: Si es true, hace falta `password_hash` para unirse. Nunca se expone el hash.
+        servidor_direccion:
+          type: string
+          description: >
+            host:puerto del servidor de partida (GAME_SERVER_ADDRESS). Presente en la
+            respuesta de POST /salas/{id}/unirse, no en el listado de GET /salas.
+          example: localhost:9000
+        jugadores:
+          type: array
+          description: >
+            Participantes actuales de la sala, en orden de posición. Solo presente en
+            el listado de GET /salas (para mostrar quién hay antes de unirse).
+          items:
+            type: object
+            required: [usuario_id, nombre_visible, posicion]
+            properties:
+              usuario_id:
+                type: string
+                format: uuid
+              nombre_visible:
+                type: string
+              posicion:
+                type: integer
+          example:
+            - usuario_id: 22222222-2222-4222-8222-222222222222
+              nombre_visible: Ana
+              posicion: 0
 
     SalaCreada:
       type: object
@@ -555,6 +683,11 @@ components:
         capacidad:
           type: integer
           example: 4
+        nombre:
+          type: string
+          example: Partida rápida
+        tiene_contrasena:
+          type: boolean
         servidor_direccion:
           type: string
           description: host:puerto del servidor de partida (GAME_SERVER_ADDRESS)

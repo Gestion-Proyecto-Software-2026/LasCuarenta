@@ -3,7 +3,9 @@ extends Control
 ## Todo va por ClienteApi (REST). ENet solo entra cuando la sala se completa.
 
 const ESCENA_FILA := preload("res://client/ui/lobby/sala_fila.tscn")
+const ESCENA_CREAR_SALA := preload("res://client/ui/lobby/crear_sala.tscn")
 const ESCENA_LOGIN := "res://client/ui/login/login.tscn"
+const ESCENA_ESPERA := "res://client/ui/espera/espera.tscn"
 
 @onready var etiqueta_usuario: Label = %EtiquetaUsuario
 @onready var etiqueta_error: Label = %EtiquetaError
@@ -59,12 +61,22 @@ func _on_boton_actualizar_pressed() -> void:
 	refrescar()
 
 
+## Abre el diálogo de crear sala (juego, capacidad, nombre, contraseña); la
+## llamada al backend solo ocurre si se confirma (ver _on_crear_sala_confirmada).
 func _on_boton_crear_pressed() -> void:
 	_ocultar_error()
+	var dialogo := ESCENA_CREAR_SALA.instantiate()
+	add_child(dialogo)
+	dialogo.confirmado.connect(_on_crear_sala_confirmada.bind(dialogo))
+	dialogo.cancelado.connect(dialogo.queue_free)
+
+
+func _on_crear_sala_confirmada(juego: String, capacidad: int, nombre: String, password: String, dialogo: Control) -> void:
+	dialogo.queue_free()
 	_bloquear(true)
-	var resultado: Dictionary = await api.crear_sala()
+	var resultado: Dictionary = await api.crear_sala(juego, capacidad, nombre, password)
 	if resultado.ok:
-		refrescar()
+		_entrar_en_sala_o_refrescar(resultado.datos)
 	elif resultado.codigo == 401:
 		_cerrar_sesion_caducada()
 	else:
@@ -72,17 +84,31 @@ func _on_boton_crear_pressed() -> void:
 		_mostrar_error(_mensaje_de(resultado))
 
 
-func _on_unirse_pulsado(sala_id: String) -> void:
+func _on_unirse_pulsado(sala_id: String, password: String) -> void:
 	_ocultar_error()
 	_bloquear(true)
-	var resultado: Dictionary = await api.unirse_sala(sala_id)
+	var resultado: Dictionary = await api.unirse_sala(sala_id, password)
 	if resultado.ok:
-		refrescar()
+		_entrar_en_sala_o_refrescar(resultado.datos)
 	elif resultado.codigo == 401:
 		_cerrar_sesion_caducada()
 	else:
 		_mostrar_error(_mensaje_de(resultado))
 		refrescar()
+
+
+## Tras crear/unirse, si el backend ya ha devuelto `servidor_direccion` (sala
+## lista para jugar), pasa a la sala de espera de la partida. Si no (p. ej. los
+## dobles de test, que no rellenan ese campo), se comporta como antes: refresca
+## la lista sin más.
+func _entrar_en_sala_o_refrescar(datos: Dictionary) -> void:
+	var sala_id: String = datos.get("id", "")
+	var servidor_direccion: String = datos.get("servidor_direccion", "")
+	if sala_id.is_empty() or servidor_direccion.is_empty():
+		refrescar()
+		return
+	ClienteRed.preparar(sala_id, servidor_direccion)
+	get_tree().change_scene_to_file(ESCENA_ESPERA)
 
 
 func _on_boton_cerrar_sesion_pressed() -> void:
