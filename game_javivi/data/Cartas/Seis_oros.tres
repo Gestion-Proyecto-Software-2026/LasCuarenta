@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://bdsirhcq00g7c"]
+
+[ext_resource type="Texture2D" uid="uid://i1nkmolgws1s" path="res://data/imagenes_cartas/seis_oros.png" id="1_f4gvf"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_m8g35"]
+
+[resource]
+script = ExtResource("2_m8g35")
+id = "Seis_oros"
+valor = 6
+imagen = ExtResource("1_f4gvf")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://b6rbr8bw8q57f"]
+
+[ext_resource type="Texture2D" uid="uid://fvfu2gs0buaq" path="res://data/imagenes_cartas/cuatro_oros.png" id="1_qk3ol"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_dxe7o"]
+
+[resource]
+script = ExtResource("2_dxe7o")
+id = "Cuatro_oros"
+valor = 4
+imagen = ExtResource("1_qk3ol")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"

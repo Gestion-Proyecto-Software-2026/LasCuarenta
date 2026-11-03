@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Carta" format=3 uid="uid://dyd6xh7atg733"]
+
+[ext_resource type="Texture2D" uid="uid://b1bfxpv27p05g" path="res://data/imagenes_cartas/Sota_espadas.png" id="1_xutxn"]
+[ext_resource type="Script" uid="uid://dy0fllhnqrrks" path="res://data/Datos_carta.gd" id="2_04ll2"]
+
+[resource]
+script = ExtResource("2_04ll2")
+id = "Sota_espadas"
+palo = 2
+valor = 10
+imagen = ExtResource("1_xutxn")
+metadata/_custom_type_script = "uid://dy0fllhnqrrks"
