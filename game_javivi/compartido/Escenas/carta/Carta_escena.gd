@@ -11,7 +11,11 @@ signal carta_soltada(carta) # Avisará al Tapete cuando soltemos el clic
 var bloqueada: bool = false
 
 var tween_actual: Tween
-var z_index_base: int = 0 
+## Animación con la que la mano la lleva a su hueco del abanico. Se para al
+## cambiar de estado: si no, al echar la carta justo después de robar, el
+## abanico la devolvía a la mano.
+var tween_abanico: Tween
+var z_index_base: int = 0
 var pos_base: Vector2 = Vector2.ZERO # Guardará su posición en el abanico
 var rot_base: float = 0.0 # Guardará su rotación en el abanico
 ## Escala en reposo. La mesa del Tute la baja para que quepan 4 jugadores; el
@@ -95,6 +99,8 @@ func cambiar_estado(nuevo_estado: State):
 	# 1. MATAMOS SIEMPRE EL TWEEN ANTERIOR (sea cual sea el estado)
 	if tween_actual:
 		tween_actual.kill()
+	if tween_abanico:
+		tween_abanico.kill()
 		
 	current_state = nuevo_estado
 	
