@@ -104,6 +104,14 @@ func _unirse(peer_id: int, payload: Dictionary) -> void:
 
 	var sala: SalaActiva = carga["sala"]
 	if not sala.posicion_de_usuario.has(usuario_id):
+		# La sala pudo cachearse (más arriba, en _cargar_sala) antes de que este
+		# usuario se uniera por REST en el lobby —p. ej. el creador se conecta
+		# por ENet nada más crear la sala, cuando el resto aún no se ha unido—;
+		# refrescar los participantes desde el backend antes de rechazarlo.
+		await _actualizar_participantes(sala)
+		if not _peers_conectados.has(peer_id):
+			return
+	if not sala.posicion_de_usuario.has(usuario_id):
 		_rechazar(peer_id, "No eres participante de esta sala")
 		return
 	var posicion: int = sala.posicion_de_usuario[usuario_id]
@@ -189,6 +197,34 @@ func _crear_sala(sala_id: String, datos: Dictionary) -> Variant:
 		sala.posicion_de_usuario[usuario_id] = int(posicion)
 		sala.usuario_en_posicion[int(posicion)] = usuario_id
 	return sala
+
+
+## Vuelve a pedir al backend los participantes de [param sala] y añade los que
+## falten en la caché (ver comentario en [method _unirse]). Ignora la
+## respuesta si falla o si la sala ya no está activa (p. ej. terminó mientras
+## se consultaba): quien llame vuelve a comprobar `posicion_de_usuario` después.
+func _actualizar_participantes(sala: SalaActiva) -> void:
+	var respuesta: Dictionary = await _backend.obtener_sala(sala.sala_id)
+	if not salas_activas.has(sala.sala_id) or not respuesta.get("ok", false) \
+			or not respuesta.get("datos") is Dictionary:
+		return
+	var participantes: Variant = respuesta["datos"].get("participantes")
+	if not participantes is Array:
+		return
+	for participante: Variant in participantes:
+		if not participante is Dictionary:
+			continue
+		var usuario_id: Variant = participante.get("usuario_id")
+		var posicion: Variant = participante.get("posicion")
+		if not usuario_id is String or not (posicion is float or posicion is int):
+			continue
+		var pos_int := int(posicion)
+		if pos_int < 0 or pos_int >= sala.capacidad:
+			continue
+		if sala.posicion_de_usuario.has(usuario_id) or sala.usuario_en_posicion.has(pos_int):
+			continue
+		sala.posicion_de_usuario[usuario_id] = pos_int
+		sala.usuario_en_posicion[pos_int] = usuario_id
 
 
 func _empezar(sala: SalaActiva) -> void:
