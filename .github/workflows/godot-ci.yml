@@ -18,6 +18,11 @@ jobs:
           version: 4.7.2
           # Godot estándar, sin .NET: el proyecto es solo GDScript.
           use-dotnet: false
+      # Sin importar antes, GUT no encuentra sus clases (ni el autoload por uid),
+      # no ejecuta ningún test y aun así termina con éxito.
+      - name: Import project
+        working-directory: game
+        run: godot --headless --import
       # Requiere tener el addon GUT instalado en game/addons/gut
       - name: Run GUT tests (headless)
         working-directory: game
