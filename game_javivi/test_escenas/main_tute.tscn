@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://test_escenas/main_tute.gd" id="1_main"]
+[ext_resource type="PackedScene" uid="uid://iqjltih46rns" path="res://compartido/Escenas/tapete/Tapete.tscn" id="2_tapete"]
+[ext_resource type="Script" uid="uid://btohkfyei1myv" path="res://compartido/logica/game_master/juego_tute.gd" id="3_tute"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_titulo"]
+font_size = 26
+
+[node name="MainTute" type="Node"]
+script = ExtResource("1_main")
+
+[node name="botones holder" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="titulo" type="Label" parent="botones holder"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.08
+anchor_top = 0.08
+anchor_right = 0.92
+anchor_bottom = 0.34
+text = "TUTE POR PAREJAS — 4 jugadores
+Abre 5 instancias. En una pulsa SER SERVIDOR (no juega) y en las otras cuatro SER CLIENTE.
+Parejas: jugadores 1 y 3 contra 2 y 4, por orden de conexión."
+label_settings = SubResource("LabelSettings_titulo")
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="server" type="Button" parent="botones holder"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5477431
+anchor_top = 0.39814815
+anchor_right = 0.87305886
+anchor_bottom = 0.58933467
+text = "SER SERVIDOR"
+
+[node name="client" type="Button" parent="botones holder"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.1328125
+anchor_top = 0.39660493
+anchor_right = 0.44597563
+anchor_bottom = 0.5877914
+text = "SER CLIENTE"
+
+[node name="Estado" type="Label" parent="."]
+visible = false
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 1130.0
+offset_bottom = 640.0
+autowrap_mode = 3
+
+[node name="Tapete" parent="." instance=ExtResource("2_tapete")]
+visible = false
+
+[node name="juego_tute" type="Node" parent="."]
+script = ExtResource("3_tute")
+
+[connection signal="pressed" from="botones holder/server" to="." method="_on_server_pressed"]
+[connection signal="pressed" from="botones holder/client" to="." method="_on_client_pressed"]
