@@ -46,6 +46,13 @@ func _centrar_zonas() -> void:
 	colision_mano.position = nodo_mano.size / 2.0
 	colision_mesa.position = nodo_mesa.size / 2.0
 	colision_mazo.position = nodo_mazo.size / 2.0
+	# El tamaño fijo original (160x120, heredado de game_javivi) deja un área de
+	# soltado mucho más pequeña que la zona "Mesa" que se ve en pantalla —al ser
+	# "Mesa" un control anclado y responsivo, su tamaño real varía con la
+	# ventana—, así que cuesta atinar al soltar la carta. Usar el tamaño real
+	# del control como área de colisión hace que toda la zona visible de la
+	# mesa admita soltar la carta.
+	colision_mesa.shape.size = nodo_mesa.size
 
 
 func actualizar(estado: Dictionary, tu_posicion: int) -> void:
