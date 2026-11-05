@@ -4,8 +4,8 @@ extends RefCounted
 ## usa su propio puerto, así que un cliente solo puede entrar en un servidor
 ## del mismo modo (si no, los mensajes de red no encajarían).
 ##
-## [code]juego[/code] dice qué controlador lleva la partida: "tute" es
-## Juego_Tute; el resto, Juego_Motor con ese motor de reglas.
+## [code]juego[/code] dice qué motor de reglas lleva Juego_Motor en la partida
+## (ver [code]Juego_Motor._crear_motor()[/code]).
 
 const LISTA: Array[Dictionary] = [
 	{"id": "guinote_1v1", "nombre": "Guiñote", "juego": "guinote", "jugadores": 2, "puerto": 8911},
@@ -18,6 +18,8 @@ const LISTA: Array[Dictionary] = [
 
 ## El modo elegido en el menú; la escena de partida lo lee al arrancar.
 static var elegido: Dictionary = {}
+## El nombre con el que se sentó el jugador la última vez ("" = "Jugador N").
+static var nombre_jugador := ""
 
 
 static func buscar(id: String) -> Dictionary:

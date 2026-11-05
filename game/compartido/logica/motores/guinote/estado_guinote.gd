@@ -12,10 +12,11 @@ enum Mano { IDAS, VUELTA }
 
 var fase: Fase = Fase.ROBO
 ## Bazas "con robada" de cada mano (4 en el Guiñote de 4, 14 en el de 2...);
-## después empieza el arrastre. Las fija el motor al repartir.
-var bazas_con_robo: int = 0
+## después empieza el arrastre. Las fija el motor al repartir; por defecto,
+## las del Guiñote de 4, para los estados hechos a mano en los tests.
+var bazas_con_robo: int = 4
 ## Bazas de cada mano: las 40 cartas entre los jugadores.
-var bazas_por_mano: int = 0
+var bazas_por_mano: int = 10
 ## Las idas, y la vuelta si nadie superó los 100 en las idas.
 var mano_actual: Mano = Mano.IDAS
 ## Tanteo con que terminaron las idas, que se arrastra a la vuelta:
@@ -47,7 +48,7 @@ var bazas_jugadas: int = 0
 var cantes: Array[Dictionary] = []
 ## Valor de bazas_jugadas cuando cantó cada jugador por última vez (-1 si nunca):
 ## cada uno puede cantar una vez por baza ganada por su equipo.
-var ultimo_cante_de: Array[int] = []
+var ultimo_cante_de: Array[int] = [-1, -1, -1, -1]
 ## Si alguien ha cantado Tute: { "jugador_id": int, "figura": String }.
 var tute: Dictionary = {}
 ## En el último robo, si quien puede cambiar el siete tiene que decidir antes de

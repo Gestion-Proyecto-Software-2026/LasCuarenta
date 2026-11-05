@@ -12,10 +12,10 @@ Closes #
 
 <!-- Cómo has comprobado que funciona: tests automáticos añadidos, prueba manual, ambas. -->
 
-## Checklist (Definición de Hecho — ver CONTRIBUTING.md §5)
+## Checklist (Definición de Hecho — ver CONTRIBUTING.md §6)
 
-- [ ] Tests automáticos (unitarios y de integración) pasan en CI.
-- [ ] Si esta PR toca lógica de juego (`game/server/game_engine/`), la cobertura de tests no baja del 60%.
+- [ ] Tests automáticos (unitarios y de integración) pasan en CI (el resumen muestra `Passing Tests`).
+- [ ] Si esta PR toca lógica de juego (`game/compartido/logica/motores/`), la cobertura de tests no baja del 60%.
 - [ ] Documentación (`README`/`docs/`) actualizada si esta PBI la afecta.
 - [ ] Backend formateado con Prettier (si aplica).
 - [ ] GDScript sigue la guía de estilo oficial de Godot (si aplica).

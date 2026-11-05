@@ -1,7 +1,8 @@
 extends Controlador_juego_Base
 class_name Juego_Motor
 ## Lleva por red cualquier juego cuyas reglas estén en un motor ([MotorDeJuego]):
-## Guiñote a 2 y a 4, Tute de 2 y Mus a 2 y a 4 ([MotorGuinote], [MotorTuteDos], [MotorMus]).
+## los 6 modos, Guiñote, Tute y Mus a 2 y a 4 ([MotorGuinote], [MotorTute],
+## [MotorTuteDos], [MotorMus]).
 ##
 ## Como en el resto del prototipo, el servidor no juega: recibe las jugadas de
 ## los clientes, se las pasa al motor y, si son válidas, manda a cada jugador lo
@@ -10,11 +11,11 @@ class_name Juego_Motor
 signal aviso_emitido(texto: String)
 signal partida_terminada(texto: String)
 
-const NOMBRES := {"guinote": "Guiñote", "tute_dos": "Tute", "mus": "Mus"}
+const NOMBRES := {"guinote": "Guiñote", "tute": "Tute", "tute_dos": "Tute", "mus": "Mus"}
 ## En el Mus, al acabar cada mano se enseñan las cartas este tiempo (por pausa_baza).
 const FACTOR_PAUSA_MANO := 2.5
 
-## Qué se juega: "guinote", "tute_dos" o "mus". Lo elige la escena de partida.
+## Qué se juega: "guinote", "tute", "tute_dos" o "mus". Lo elige la escena de partida.
 var juego: String = "guinote"
 ## Segundos que la baza completa se queda a la vista antes de recogerla.
 var pausa_baza: float = 2.0
@@ -37,6 +38,8 @@ func _crear_motor() -> MotorDeJuego:
 	else:
 		rng.randomize()
 	match juego:
+		"tute":
+			return MotorTute.new(rng)
 		"tute_dos":
 			return MotorTuteDos.new(rng)
 		"mus":
@@ -65,7 +68,7 @@ func _iniciar_juego() -> void:
 	var dador: int = vista["mano"] if juego == "mus" else vista["dador"]
 	if _tapete:
 		_tapete.rpc("configurar_mesa", peers, nombres, vista.get("pinta", ""), peers[dador],
-			{"mazo": true, "juego": juego})
+			{"mazo": juego != "tute", "juego": juego})
 	if juego == "mus":
 		_avisar_todos("Empieza el Mus. Es mano %s." % jugadores[dador].nombre)
 	else:
@@ -112,7 +115,13 @@ func _recibir_jugada(jugada: Dictionary) -> void:
 		return
 	var resultado := motor.aplicar_jugada(estado, asiento, jugada)
 	if not resultado.ok:
-		_rechazar(asiento, jugada, resultado.error)
+		var motivo := resultado.error
+		# Con una carta que no vale, mejor decir qué obliga (asistir, montar, fallar...).
+		if jugada.get("tipo") == MotorDeJuego.JUGAR_CARTA and motor.has_method("motivo_carta_no_valida"):
+			var explicacion: String = motor.call("motivo_carta_no_valida", estado, asiento, str(jugada.get("carta_id", "")))
+			if explicacion != "":
+				motivo = explicacion
+		_rechazar(asiento, jugada, motivo)
 		return
 	var anterior := estado
 	estado = resultado.estado
@@ -127,6 +136,9 @@ func _recibir_jugada(jugada: Dictionary) -> void:
 			await _ensenar_mano_de_mus()
 	elif estado.get("mano_actual") != anterior.get("mano_actual"):
 		_anunciar_vuelta()
+	# Durante la pausa se ha podido cancelar la partida (se ha ido alguien).
+	if not juego_en_curso:
+		return
 	_enviar_estado()
 	if motor.ha_terminado(estado):
 		_terminar()
@@ -137,7 +149,7 @@ func _rechazar(asiento: int, jugada: Dictionary, motivo: String) -> void:
 	if jugada.get("tipo") == MotorDeJuego.JUGAR_CARTA:
 		rpc_id(peer, "jugada_rechazada", jugada.get("carta_id", ""))
 	if _tapete:
-		_tapete.rpc_id(peer, "mostrar_aviso", motivo)
+		_tapete.rpc_id(peer, "avisar_error", motivo)
 	if not acciones_bloqueadas:
 		_enviar_estado_a(asiento)
 
@@ -249,7 +261,8 @@ func _terminar() -> void:
 	var manos: Array = r["manos"]
 	for i in manos.size():
 		var t: Dictionary = manos[i]
-		lineas.append("%s:" % ("Idas" if i == 0 else "Vuelta"))
+		var titulo := "Tanteo" if juego == "tute" else ("Idas" if i == 0 else "Vuelta")
+		lineas.append("%s:" % titulo)
 		for equipo in 2:
 			lineas.append("  %s: %d = cartas %d + cantes %d + últimas %d" % [
 				_nombre_equipo(equipo), t["total"][equipo], t["cartas"][equipo],

@@ -21,7 +21,7 @@ func _baraja(rng: RandomNumberGenerator) -> Array:
 	return cartas
 
 
-## Juega una partida entera con la misma lógica que Juego_Tute y devuelve lo que ha pasado.
+## Juega una partida entera con ReglasTute sola (sin motor ni red) y devuelve lo que ha pasado.
 func _jugar(semilla: int, cantar := true) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = semilla

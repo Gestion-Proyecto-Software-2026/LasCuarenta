@@ -145,6 +145,10 @@ func sincronizar_turno(peer_id_activo: int):
 @rpc("authority", "call_remote", "reliable")
 func mostrar_mensaje_error(mensaje: String):
 	print("Servidor informa: ", mensaje)
+	# En la mesa nueva, el motivo (p. ej. "No es tu turno.") se ve en pantalla.
+	var tapete = get_node_or_null("../Tapete")
+	if tapete and tapete.has_method("avisar_error"):
+		tapete.avisar_error(mensaje)
 
 @rpc("authority", "call_remote", "reliable")
 func jugada_rechazada(id_carta: String):

@@ -9,7 +9,12 @@ const PARTIDAS := 300
 func _motor(juego: String, semilla: int) -> MotorGuinote:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = semilla
-	return MotorTuteDos.new(rng) if juego == "tute" else MotorGuinote.new(rng)
+	match juego:
+		"tute":
+			return MotorTuteDos.new(rng)
+		"tute_parejas":
+			return MotorTute.new(rng)
+	return MotorGuinote.new(rng)
 
 
 ## Juega una partida entera eligiendo al azar entre las jugadas válidas. Si
@@ -94,6 +99,80 @@ func test_tute_de_dos_partidas_completas() -> void:
 	assert_true(motivos.has("tantos"))
 
 
+func test_tute_por_parejas_partidas_completas() -> void:
+	var motivos := _comprobar_muchas("tute_parejas", 4)
+	assert_true(motivos.has("tantos"))
+	assert_false(motivos.has("vuelta"), "El Tute por parejas es a una sola mano")
+	var sin_cantar := _comprobar_muchas("tute_parejas", 4, false)
+	assert_eq(sin_cantar.keys(), ["tantos"], "Sin cantar no hay Tute: siempre por tantos")
+
+
+func test_tute_por_parejas_reparto() -> void:
+	var motor := _motor("tute_parejas", 4)
+	var e: EstadoGuinote = motor.iniciar(4)
+	for mano: Array in e.manos:
+		assert_eq(mano.size(), 10)
+	assert_eq(e.mazo.size(), 0, "Se reparten las 40")
+	assert_eq(e.manos[e.dador].back(), e.pinta, "La pinta es la última carta del dador y se la queda")
+	assert_eq(e.fase, EstadoGuinote.Fase.ARRASTRE, "Arrastre desde la primera baza")
+	assert_eq(e.turno, (e.dador + 1) % 4, "Sale el de la derecha del dador")
+	var vista := motor.vista_para_jugador(e, 0)
+	assert_eq([vista["pinta"], vista["cartas_en_mazo"]], [e.pinta, 1], "La mesa enseña la pinta en la esquina")
+
+
+## Tute por parejas, triunfo oros, la pareja 0-2 ganó la última baza.
+func _estado_tute_parejas() -> EstadoGuinote:
+	var e := EstadoGuinote.new()
+	e.num_jugadores = 4
+	e.manos = [
+		["Rey_oros", "Caballo_oros", "Rey_copas", "Caballo_copas"] as Array[String],
+		["As_espadas"] as Array[String],
+		["Rey_bastos", "Caballo_bastos", "Siete_oros"] as Array[String],
+		["As_bastos"] as Array[String],
+	]
+	e.pinta = "Dos_oros"
+	e.palo_triunfo = 0
+	e.fase = EstadoGuinote.Fase.ARRASTRE
+	e.bazas_con_robo = 0
+	e.bazas_jugadas = 3
+	e.ultima_baza = {"ganador": 0, "cartas": []}
+	e.turno = 0
+	return e
+
+
+func test_tute_por_parejas_cantes() -> void:
+	var motor := MotorTute.new()
+	var e := _estado_tute_parejas()
+	var cantes := motor.jugadas_validas(e, 0).filter(func(j: Dictionary) -> bool: return j["tipo"] == MotorDeJuego.CANTAR)
+	assert_eq(cantes[0], {"tipo": MotorDeJuego.CANTAR, "palo": "oros"}, "Primero las 40, como el botón de siempre")
+	assert_eq(cantes.size(), 2)
+	# Sale el jugador 0 y echa el rival 1: el compañero (2), que aún no ha echado, puede cantar.
+	e.manos[0].erase("Rey_copas")
+	e.baza_actual = [{"jugador_id": 0, "carta": "Rey_copas"}, {"jugador_id": 1, "carta": "As_espadas"}]
+	e.turno = 2
+	assert_eq(motor.jugadas_validas(e, 0).filter(func(j: Dictionary) -> bool: return j["tipo"] == MotorDeJuego.CANTAR), [],
+		"Quien ya ha echado carta en esta baza no canta")
+	assert_has(motor.jugadas_validas(e, 2), {"tipo": MotorDeJuego.CANTAR, "palo": "bastos"},
+		"El compañero canta aunque ya haya jugado un rival")
+	assert_eq(motor.jugadas_validas(e, 1), [], "La pareja rival no canta")
+
+
+func test_tute_por_parejas_sin_cambio_de_pinta() -> void:
+	var motor := MotorTute.new()
+	var e := _estado_tute_parejas()
+	assert_false(motor.puede_cambiar_siete(e, 2), "El jugador 2 tiene el 7 de triunfo, pero en el Tute no se cambia")
+
+
+func test_tute_por_parejas_explica_con_reglas_tute() -> void:
+	var motor := MotorTute.new()
+	var e := _estado_tute_parejas()
+	e.baza_actual = [{"jugador_id": 3, "carta": "Cuatro_espadas"}, {"jugador_id": 0, "carta": "Dos_oros"}]
+	e.manos[1] = ["Tres_oros", "As_copas"] as Array[String]
+	e.turno = 1
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "As_copas"),
+		"Tienes que pisar: echa un triunfo más alto que el Dos de oros.")
+
+
 func test_tute_de_dos_con_capote_siempre() -> void:
 	var motivos := _comprobar_muchas("tute", 2, true, true)
 	assert_true(motivos.has("capote"), "Si siempre se anuncia, alguna partida acaba por capote")
@@ -135,6 +214,41 @@ func _estado_tute(mano0: Array[String], mano1: Array[String], pinta := "Rey_oros
 	e.ultima_baza = {"ganador": 0, "cartas": [{"jugador_id": 1, "carta": "Dos_espadas"}, {"jugador_id": 0, "carta": "Tres_espadas"}]}
 	e.turno = 0
 	return e
+
+
+## Guiñote de 2 en arrastre, triunfo oros, sale el jugador 0 y le toca al 1.
+func _arrastre(mano1: Array[String], salida: String) -> EstadoGuinote:
+	var e := _estado_tute(["Siete_bastos"], mano1, "Rey_oros")
+	e.pinta = ""
+	e.mazo.clear()
+	e.fase = EstadoGuinote.Fase.ARRASTRE
+	e.bazas_con_robo = 14
+	e.baza_actual = [{"jugador_id": 0, "carta": salida}]
+	e.turno = 1
+	return e
+
+
+func test_motivo_de_carta_no_valida() -> void:
+	var motor := MotorGuinote.new()
+	var e := _arrastre(["Dos_copas", "As_copas", "Rey_espadas"], "Cuatro_copas")
+	assert_eq(motor.motivo_carta_no_valida(e, 0, "Siete_bastos"), "Espera tu turno.")
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "Rey_espadas"), "Tienes que asistir: echa una carta de copas.")
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "Dos_copas"),
+		"Tienes que montar: echa una carta de copas más alta que el Cuatro de copas.")
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "As_copas"), "", "El As monta: vale")
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "Tres_copas"), "No tienes esa carta.")
+	var sin_copas := _arrastre(["Dos_oros", "Rey_bastos"], "Cuatro_copas")
+	assert_eq(motor.motivo_carta_no_valida(sin_copas, 1, "Rey_bastos"),
+		"No tienes copas: tienes que fallar con un triunfo (oros).")
+
+
+func test_motivo_en_el_tute_de_dos_con_mazo() -> void:
+	var motor := MotorTuteDos.new()
+	var e := _estado_tute(["As_copas"], ["Dos_oros", "As_copas"])
+	e.baza_actual = [{"jugador_id": 0, "carta": "Cuatro_oros"}]
+	e.turno = 1
+	assert_eq(motor.motivo_carta_no_valida(e, 1, "As_copas"), "Tienes que asistir: echa una carta de oros.",
+		"Sale triunfo con mazo: hay que echar triunfo")
 
 
 func test_tute_de_dos_se_canta_con_rey_y_caballo() -> void:

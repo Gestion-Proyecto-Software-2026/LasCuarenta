@@ -31,19 +31,19 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 |---|---|---|
 | PBI-01 — Registro y autenticación | Alta | ✅ Backend (registro, login, recuperar y restablecer contraseña) y pantallas del cliente |
 | PBI-02 — Lobby y gestión de salas | Alta | ✅ Listar, crear y unirse a salas, en el backend y en el cliente. Solo se pueden crear salas de Guiñote |
-| PBI-03 — Partida completa de Guiñote | Alta | ✅ Motor de reglas completo y registrado en el servidor de partida |
-| PBI-04 — Partida completa de Mus | Media | 🟡 Motor de reglas completo (2 o 4 jugadores) y registrado; falta poder crear salas de Mus y jugarlas desde el cliente |
-| PBI-05 — Partida completa de Tute | Media | ⏳ Pendiente |
+| PBI-03 — Partida completa de Guiñote | Alta | ✅ Motor de reglas completo y jugable en la mesa, por parejas y 1 contra 1 |
+| PBI-04 — Partida completa de Mus | Media | ✅ Motor de reglas completo y jugable en la mesa, por parejas y 1 contra 1 |
+| PBI-05 — Partida completa de Tute | Media | ✅ Jugable en la mesa por parejas; también 1 contra 1 (⚠️ reglas de §10 pendientes de confirmar) |
 | PBI-06 — Historial y estadísticas | Media | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-07 — Ranking de jugadores | Baja | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-08 — Chat en partida | Baja | ⏳ Pendiente (el servidor responde que el chat no está disponible) |
 | PBI-09 — Moderación de salas | Baja | ⏳ Pendiente (`POST /salas/:id/expulsar` responde `501`) |
 
-**Todavía no se puede jugar una partida de principio a fin desde el cliente.** Los motores de Guiñote y Mus funcionan y están probados, pero faltan piezas que no pertenecen a ninguna PBI de juego:
+**Ya se pueden jugar los 6 modos de principio a fin** (Guiñote, Mus y Tute, 1 contra 1 y por parejas): las ventanas se conectan directamente por IP, sin cuentas ni salas ([sección 5.2](#52-jugar-una-partida)). Lo que falta es unir la partida con las cuentas y las salas:
 
-- **Rutas internas del backend.** `GET /interno/salas/:id` y `POST /interno/partidas` están en el contrato (§5) y el servidor de partida ya las llama, pero el backend aún no las implementa. Sin ellas, el servidor de partida no puede cargar salas ni guardar resultados.
-- **Conexión del cliente con el servidor de partida.** El cliente no abre todavía la conexión ENet ni envía `unirse_partida` cuando la sala se completa. Tampoco hay mesa de juego: `client/scenes/mesa/tapete.tscn` es solo un esqueleto.
-- **Salas de Mus.** `POST /salas` solo admite `guinote` (capacidad 4). Falta `mus` con capacidad 2 o 4.
+- **Login, lobby y servidor de salas en Godot.** Existían en el proyecto `game/` anterior a la unificación (pantallas de login, registro, recuperar y lobby; `RoomManager`, `verificador_jwt`, `cliente_backend`). Siguen en el historial de `main` (commit `a6a6bdc`) y hay que reintegrarlos con la mesa actual.
+- **Rutas internas del backend.** `GET /interno/salas/:id` y `POST /interno/partidas` están en el contrato (§5) pero el backend aún no las implementa.
+- **Salas de Mus y Tute.** `POST /salas` solo admite `guinote` (capacidad 4). Faltan `mus` y `tute`, con capacidad 2 o 4.
 
 ---
 
@@ -62,6 +62,8 @@ Cliente (Godot nativo) ──HTTPS REST──▶ nginx ──▶ Backend (Node+E
         └────────ENet (UDP)────────▶ Servidor de partida ┘
                                      (Godot headless: RoomManager + MotorDeJuego)
 ```
+
+**Hoy** el servidor de partida es la propia escena de partida en modo servidor (`game/escenas/partida.tscn`): una partida por proceso, sin backend ni JWT. El esquema de arriba es el objetivo al reintegrar las salas (sección 1).
 
 Tecnologías por componente:
 
@@ -114,22 +116,24 @@ La fuente es la Definición de Hecho de la Práctica 1:
 │   ├── migrations/          SQL que crea y endurece el esquema (001, 002, 003…)
 │   ├── tests/               Jest + Supertest
 │   └── openapi.yaml         especificación de la API que se sirve en /api/docs
-├── game/                    proyecto Godot (abrir game/project.godot)
-│   ├── client/              solo presentación e input
-│   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales
-│   │   ├── ui/              login, registro, recuperar, lobby, tema visual
-│   │   └── scenes/          carta, mesa (cada escena en su carpeta, junto a su script)
-│   ├── server/              lógica autoritativa; ningún script hereda de un nodo visual
-│   │   ├── main_server.*    punto de entrada headless, abre ENet y registra los motores
-│   │   ├── room_manager.gd  salas en memoria, validación de unirse_partida y jugadas
-│   │   ├── sala_activa.gd   una sala: asientos, conexiones y estado de su partida
-│   │   ├── verificador_jwt.gd, cliente_backend.gd
-│   │   └── game_engine/     MotorDeJuego (clase base) + guinote/, mus/, tute/
-│   ├── shared/              Carta, Baraja, CanalRed (RPC único) y MensajesRed
-│   ├── tests/               tests GUT: unit/ (refleja la ruta del script) e integration/
+├── game/                    proyecto Godot (abrir game/project.godot); arranca en el menú
+│   ├── escenas/             menú de los 6 modos y escena de partida (servidor o jugador)
+│   ├── compartido/
+│   │   ├── Escenas/         carta y tapete (la mesa: 2 o 4 jugadores, pila del mazo, Mus)
+│   │   └── logica/
+│   │       ├── modos.gd     los 6 modos: juego, jugadores y puerto de cada uno
+│   │       ├── game_master/ Juego_Motor (lleva los 6 modos por red), ReglasTute (reglas
+│   │       │                del Tute por parejas) y lo del Guiñote original de Javi
+│   │       └── motores/     reglas puras, sin red ni nodos: MotorDeJuego (clase base),
+│   │                        cartas.gd y guinote/, tute/, tute_dos/, mus/
+│   ├── data/                cartas (recursos .tres e imágenes) y fondo del tapete
+│   ├── tests/unit/          tests GUT: guinote/, mus/ y los del Tute, los motores y la mesa
+│   ├── herramientas/        partidas_red.sh: partidas completas por red, sin pantalla
+│   ├── test_escenas/        escena de prueba anterior al menú (Guiñote original de Javi)
 │   └── addons/gut/          framework de testing GUT
 ├── infra/nginx/             proxy inverso con TLS delante del backend
 ├── docs/                    análisis funcional, arquitectura, diagramas
+├── jugar.bat                Windows: doble clic para jugar cualquier modo en este ordenador
 ├── docker-compose.yml       PostgreSQL + backend para desarrollo
 └── CONTRIBUTING.md          flujo de ramas, Pull Requests y Definición de Hecho
 ```
@@ -151,7 +155,7 @@ En los comandos de este README, `godot` es el ejecutable de Godot 4.7.2. En Wind
 
 ## 5. Puesta en marcha en local
 
-Son tres procesos: base de datos y backend (Docker), servidor de partida (Godot headless) y cliente (Godot).
+Para jugar solo hace falta Godot (5.2). La base de datos y el backend (5.1) son para el login y las salas, que todavía no están conectados con la partida.
 
 ### 5.1 Backend y base de datos
 
@@ -192,39 +196,28 @@ npm run dev             # nodemon: reinicia al guardar
 
 `src/index.js` carga `backend/.env` al arrancar; las variables que ya existan en el entorno tienen prioridad. La base de datos puede seguir en Docker: `docker compose up -d db`.
 
-### 5.2 Servidor de partida
+### 5.2 Jugar una partida
 
-Necesita **los mismos secretos que el backend**: si no, no arranca. Con los valores de `docker-compose.yml`:
+**Lo más cómodo, en Windows: doble clic en [`jugar.bat`](jugar.bat)** (en la raíz del repo, desde el Explorador de archivos). Busca Godot 4.7 (si no lo encuentra, pide arrastrar su `.exe` a la ventana y lo recuerda para la próxima vez), prepara el proyecto y enseña un menú con los 6 modos. Al elegir uno, abre una ventana por jugador, colocadas en rejilla para verlas todas a la vez, y la propia consola hace de servidor. Al acabar, las ventanas se quedan con el resultado; al cerrarlas (o pulsar **C** en la consola) se vuelve al menú. También acepta el modo como argumento: `jugar.bat mus_2v2`. Si Windows pregunta por el cortafuegos la primera vez, se puede cancelar: todo va por `127.0.0.1`, dentro del mismo ordenador.
 
-**Linux / macOS / Git Bash:**
+A mano, desde el editor:
+
+1. Abrid `game/project.godot` con el editor de Godot 4.7.2 y ejecutadlo (**F5**): arranca en el menú.
+2. Abrid una ventana más que jugadores: 3 para un 1 contra 1, 5 por parejas. En el editor, *Depurar → Personalizar instancias de ejecución…* (*Debug → Customize Run Instances…*).
+3. En todas, elegid el mismo juego y modo. En una pulsad **SER SERVIDOR** (no juega, enseña lo que pasa) y en las demás **SER CLIENTE**. La partida empieza cuando están todos. Por parejas: jugadores 1 y 3 contra 2 y 4, por orden de conexión.
+
+Cada modo usa su propio puerto (8911–8916, en `compartido/logica/modos.gd`), así que un cliente solo entra en un servidor del mismo modo. Hoy se conecta a `127.0.0.1`: para jugar entre ordenadores hay que cambiar `DIRECCION` en `escenas/partida.gd`.
+
+**Sin pantalla, para probar.** La escena de partida acepta argumentos tras `--`, p. ej. una partida de Guiñote 1 contra 1 que se juega sola:
 
 ```bash
-JWT_SECRET=cambia_esto_en_produccion \
-INTERNAL_API_SECRET=cambia_esto_tambien_en_produccion \
-godot --headless --path game res://server/main_server.tscn
+godot --headless --path game res://escenas/partida.tscn -- modo=guinote_1v1 servidor pausa_corta salir_al_terminar
+godot --headless --path game res://escenas/partida.tscn -- modo=guinote_1v1 cliente autojugar salir_al_terminar   # dos veces
 ```
 
-**Windows (PowerShell):**
+Todos los argumentos (`semilla=N`, `puerto=N`, `no_cantar`, `captura=RUTA.png`…) están explicados al principio de `escenas/partida.gd`. El servidor escribe al final una línea `FIN …` con el resultado. Hay un script que lanza varias así y comprueba que acaban bien: [`game/herramientas/partidas_red.sh`](game/herramientas/partidas_red.sh).
 
-```powershell
-$env:JWT_SECRET = "cambia_esto_en_produccion"
-$env:INTERNAL_API_SECRET = "cambia_esto_tambien_en_produccion"
-godot --headless --path game res://server/main_server.tscn
-```
-
-Al arrancar escribe `Servidor de partida escuchando en UDP 9000 (backend: …, juegos: [guinote, mus])`.
-
-- **Otro puerto:** añadid `-- --puerto=9001` al final.
-- **Otro backend:** `BACKEND_URL` (opcional, por defecto `http://localhost:3000/api`).
-- La dirección que el backend entrega a los clientes (`GAME_SERVER_ADDRESS`, por defecto `localhost:9000`) debe apuntar a este proceso.
-
-### 5.3 Cliente
-
-1. Abrid `game/project.godot` con el editor de Godot 4.7.2.
-2. **La escena principal (`client/main_client.tscn`) todavía está vacía.** Para probar el cliente, abrid `client/ui/login/login.tscn` y ejecutadla con **F6** (*Ejecutar escena actual*). Desde el login se llega a registro, recuperar contraseña y, tras iniciar sesión, al lobby.
-3. El cliente usa `http://localhost:3000/api` como backend. Para apuntar a otro, definid la variable de entorno `BACKEND_URL` antes de abrir Godot.
-
-Para probar con varios jugadores, abrid varias instancias del cliente: en el editor, menú *Depurar → Personalizar instancias de ejecución…* (*Debug → Customize Run Instances…*). Usad una cuenta distinta en cada una.
+Si un jugador se desconecta a mitad de partida, se cancela y los demás pueden volver al menú; si se va antes de empezar, su sitio queda libre.
 
 ---
 
@@ -244,21 +237,9 @@ Para probar con varios jugadores, abrid varias instancias del cliente: en el edi
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | — | Correo de `POST /auth/recuperar`. En desarrollo sirve un SMTP de pruebas (Mailtrap, Ethereal) |
 | `RECOVERY_CODE_TTL_MIN` | `15` | Minutos de validez del código de recuperación |
 
-**Servidor de partida.**
+**Juego (`game/`).** Hoy no usa variables de entorno. Al reintegrar las salas (sección 1), el servidor de partida volverá a necesitar `JWT_SECRET` e `INTERNAL_API_SECRET` (los mismos valores que el backend) y, opcionalmente, `BACKEND_URL`.
 
-| Variable | Obligatoria | Para qué |
-|---|---|---|
-| `JWT_SECRET` | Sí | Mismo valor que el backend: el servidor verifica él mismo el token de `unirse_partida` |
-| `INTERNAL_API_SECRET` | Sí | Mismo valor que el backend: autentica sus llamadas a `/interno/*` |
-| `BACKEND_URL` | No | Por defecto `http://localhost:3000/api` |
-
-**Cliente.**
-
-| Variable | Obligatoria | Para qué |
-|---|---|---|
-| `BACKEND_URL` | No | Por defecto `http://localhost:3000/api` |
-
-⚠️ Los valores de ejemplo son solo para desarrollo. Si `JWT_SECRET` o `INTERNAL_API_SECRET` se filtran desde cualquiera de los dos procesos, hay que cambiarlos en los dos.
+⚠️ Los valores de ejemplo son solo para desarrollo. Si `JWT_SECRET` o `INTERNAL_API_SECRET` se filtran, hay que cambiarlos en todos los procesos que los usen.
 
 ---
 
@@ -266,23 +247,25 @@ Para probar con varios jugadores, abrid varias instancias del cliente: en el edi
 
 ### Juego (GUT)
 
-Desde la raíz del repositorio, igual que en el CI:
+Desde la raíz del repositorio, igual que en el CI (los dos pasos):
 
 ```bash
+godot --headless --path game --import
 godot --headless --path game -s addons/gut/gut_cmdln.gd
 ```
 
+⚠️ **No os saltéis el `--import`** en una copia recién clonada: sin él GUT no encuentra sus clases, **no ejecuta ningún test y aun así termina con éxito**. Si la salida no muestra el resumen `Passing Tests`, no se ha probado nada.
+
 - **Desde el editor:** usad el panel de GUT (abajo).
 - **Solo algunos ficheros:** añadid `-gselect=mus`, por ejemplo, para ejecutar solo los que contienen `mus` en el nombre.
-- La primera vez en una copia recién clonada, conviene importar el proyecto antes: `godot --headless --path game --import`.
 
 Convenciones ([CONTRIBUTING.md](CONTRIBUTING.md) §5):
 
 - GUT recorre `game/tests/` y sus subcarpetas, y ejecuta los ficheros `test_*.gd` que heredan de `GutTest`.
-- Los tests unitarios van en `game/tests/unit/`, reflejando la ruta del script: `server/game_engine/mus/motor_mus.gd` → `tests/unit/server/game_engine/mus/test_motor_mus.gd`.
-- Los que combinan varias piezas (p. ej. `RoomManager` con un motor real) van en `game/tests/integration/`.
+- Los tests de cada motor van en `game/tests/unit/<juego>/` (p. ej. `motores/mus/motor_mus.gd` → `tests/unit/mus/test_motor_mus.gd`).
 - La aleatoriedad del reparto se inyecta (`MotorDeJuego.new(rng)`), así que una partida con semilla fija es reproducible.
-- **Cobertura mínima del 60 %** en la lógica de juego (`shared/` y `server/game_engine/`), no en el cliente.
+- **Cobertura mínima del 60 %** en la lógica de juego (`compartido/logica/motores/` y las reglas del Tute), no en la mesa.
+- Las partidas completas por red se prueban con [`game/herramientas/partidas_red.sh`](game/herramientas/partidas_red.sh) (sección 5.2).
 
 ### Backend (Jest + Supertest)
 
@@ -301,7 +284,7 @@ Hay un fichero de test por recurso en `backend/tests/`. Las pruebas usan Superte
 
 ## 8. Cómo funciona una partida
 
-Flujo previsto de principio a fin ([`docs/analisis_funcional_app.md`](docs/analisis_funcional_app.md) §11). Los pasos 3 a 6 todavía no funcionan de extremo a extremo (ver la [sección 1](#1-estado-del-proyecto)).
+Flujo previsto de principio a fin ([`docs/analisis_funcional_app.md`](docs/analisis_funcional_app.md) §11). Los pasos 1 y 2 funcionan contra el backend, pero todavía no están unidos con la partida (ver la [sección 1](#1-estado-del-proyecto)). Hoy la partida se juega sin login, conectando por IP (sección 5.2), con el mismo principio: el servidor manda a cada jugador su vista y sus jugadas válidas, y la mesa solo las pinta.
 
 1. **Login.** El usuario abre el cliente e inicia sesión: `POST /api/auth/login`. El cliente envía el **SHA-256 de la contraseña** (`password_hash`), nunca la contraseña en claro, y el backend le aplica además `bcrypt` antes de guardarla.
 2. **Lobby.** Ve las salas con `GET /api/salas` y crea una (`POST /api/salas`) o se une a otra (`POST /api/salas/:id/unirse`). Quien crea la sala ocupa la posición 0; al unirse, el backend da la primera posición libre.
@@ -320,13 +303,14 @@ Flujo previsto de principio a fin ([`docs/analisis_funcional_app.md`](docs/anali
 
 ## 9. Los juegos
 
-Cada juego es un motor que hereda de `MotorDeJuego` (`game/server/game_engine/`). `RoomManager` solo habla con esa interfaz: **añadir un juego no toca `room_manager.gd`**, basta con registrar su motor en `MOTORES` de `server/main_server.gd`. El `jugador_id` es la posición en la mesa, y en las mesas de 4 las parejas son 0-2 contra 1-3.
+Cada juego es un motor que hereda de `MotorDeJuego` (`game/compartido/logica/motores/`): reglas puras, sin red ni nodos, con las cartas como ids de texto (`"Caballo_oros"`, ver `cartas.gd`). `Juego_Motor` (`compartido/logica/game_master/juego_motor.gd`) los lleva por red sin conocer las reglas: **añadir un juego es escribir su motor y añadirlo a `_crear_motor()` y a `compartido/logica/modos.gd`**. El `jugador_id` es la posición en la mesa, y en las mesas de 4 las parejas son 0-2 contra 1-3. Los motores de Guiñote y Mus son los de Carlos (antes en `game/server/game_engine/`), adaptados a estas cartas.
 
 | Juego | Jugadores | Reglas | Estado |
 |---|---|---|---|
-| **Guiñote** | 4, por parejas | §8 | Completo: reparto, 4 bazas con robo, arrastre, cantes (20 y las 40), Tute de reyes o sotas, cambio del siete, tanteo a 101 con "diez últimas" y vuelta |
+| **Guiñote** | 2 o 4 | §8 | Completo: reparto, bazas con robo (4 a cuatro jugadores, 14 a dos), arrastre, cantes (20 y las 40), Tute de reyes o sotas, cambio del siete, tanteo a 101 con "diez últimas" y vuelta |
 | **Mus** | 2 o 4 | §9 | Completo: mus y descartes, lances (Grande, Chica, Pares, Juego o Punto), envites (pasar, envidar, subir, órdago, quiero, no quiero), cobro, amarracos, juegos a 40 piedras, partida al mejor de 3 juegos |
-| **Tute** | 4, por parejas | §10 | Pendiente. Las variantes de 2 y 3 jugadores quedan fuera de alcance |
+| **Tute** | 4, por parejas | §10 | Completo (`MotorTute`, que usa las reglas de `ReglasTute`): 10 cartas, arrastre desde la primera baza, cantes por pareja, Tute de reyes o caballos, tanteo a una mano |
+| **Tute** | 2 | §10 | Completo (`MotorTuteDos`): 8 cartas, robo, cambio de la pinta por el 7 o el 2, capote, 101 y vuelta. ⚠️ Decisiones pendientes de confirmar en §10 |
 
 ⚠️ **Aviso:**
 
@@ -368,7 +352,7 @@ Workflows de `.github/workflows/`:
 | Workflow | Cuándo se ejecuta | Qué hace |
 |---|---|---|
 | `Backend CI` (`backend-ci.yml`) | PR y push a `main` que tocan `backend/` | `npm ci`, `npm run lint`, `npm run format:check`, `npm test` con Node 20 |
-| `Godot CI` (`godot-ci.yml`) | PR y push a `main` que tocan `game/` | Todos los tests GUT en headless con Godot 4.7.2 |
+| `Godot CI` (`godot-ci.yml`) | PR y push a `main` que tocan `game/` | Importa el proyecto y ejecuta todos los tests GUT en headless con Godot 4.7.2 (sin el paso de importar no se ejecutaba ninguno; ver sección 7) |
 | `Build and release client` (`godot-release.yml`) | Al subir un tag `v*` | Exporta el cliente para Windows y Linux y publica una GitHub Release con los ejecutables |
 
 **Publicar una versión del cliente.** Las versiones no tienen rama propia: salen de un tag sobre `main`.

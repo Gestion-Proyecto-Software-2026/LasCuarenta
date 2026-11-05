@@ -80,6 +80,12 @@ func momento_de_cambio(e: EstadoGuinote, jugador_id: int) -> bool:
 	return not e.ultima_baza.is_empty() and equipo_de(e.ultima_baza["ganador"]) == equipo_de(jugador_id)
 
 
+## Si [param jugador_id] puede cantar ahora. En Guiñote, desde que su pareja gana
+## la baza hasta que un rival echa carta en la siguiente.
+func momento_de_cantar(e: EstadoGuinote, jugador_id: int) -> bool:
+	return ventana_de_cante_abierta(e, jugador_id)
+
+
 ## Jugadas propias de cada juego que no son cartas, cantes ni cambios (el capote del Tute de 2).
 func jugadas_extra(_e: EstadoGuinote, _jugador_id: int) -> Array[Dictionary]:
 	var ninguna: Array[Dictionary] = []
@@ -184,7 +190,7 @@ func puede_cambiar_siete(e: EstadoGuinote, jugador_id: int) -> bool:
 ## la baza siguiente.
 func _cantes_posibles(e: EstadoGuinote, jugador_id: int) -> Array[Dictionary]:
 	var cantes: Array[Dictionary] = []
-	if not ventana_de_cante_abierta(e, jugador_id):
+	if not momento_de_cantar(e, jugador_id):
 		return cantes
 	var mano: Array = e.manos[jugador_id]
 	if e.ultimo_cante_de[jugador_id] != e.bazas_jugadas:
@@ -247,6 +253,36 @@ func cartas_permitidas_en_arrastre(mano: Array, baza: Array[Dictionary], palo_tr
 	if triunfo_rival == "":
 		return triunfos
 	return _las_que_superan(triunfos, triunfo_rival, mano)
+
+
+## Por qué [param jugador_id] no puede echar [param carta_id] ahora, para
+## decírselo en la mesa; [code]""[/code] si sí puede.
+func motivo_carta_no_valida(e: EstadoGuinote, jugador_id: int, carta_id: String) -> String:
+	if e.siete_pendiente != -1:
+		return "Espera: hay que decidir si se cambia la pinta."
+	if jugador_id != e.turno:
+		return "Espera tu turno."
+	var mano: Array = e.manos[jugador_id]
+	if carta_id not in mano:
+		return "No tienes esa carta."
+	var permitidas := cartas_permitidas_en_robo(mano, e.baza_actual, e.palo_triunfo)
+	if e.fase == EstadoGuinote.Fase.ARRASTRE:
+		permitidas = cartas_permitidas_en_arrastre(mano, e.baza_actual, e.palo_triunfo, jugador_id)
+	if carta_id in permitidas or e.baza_actual.is_empty():
+		return ""
+	var salida := Cartas.palo(e.baza_actual[0]["carta"])
+	if mano.any(func(c: String) -> bool: return Cartas.palo(c) == salida):
+		if Cartas.palo(carta_id) != salida:
+			return "Tienes que asistir: echa una carta de %s." % Cartas.nombre_palo(salida)
+		var mas_alta := _mas_alta(e.baza_actual, func(j: Dictionary) -> bool: return Cartas.palo(j["carta"]) == salida)
+		return "Tienes que montar: echa una carta de %s más alta que el %s." % [
+			Cartas.nombre_palo(salida), Cartas.nombre(mas_alta)]
+	var triunfo_rival := _mas_alta(e.baza_actual, func(j: Dictionary) -> bool:
+		return Cartas.palo(j["carta"]) == e.palo_triunfo and equipo_de(j["jugador_id"]) != equipo_de(jugador_id))
+	if triunfo_rival != "":
+		return "Tienes que fallar con un triunfo más alto que el %s." % Cartas.nombre(triunfo_rival)
+	return "No tienes %s: tienes que fallar con un triunfo (%s)." % [
+		Cartas.nombre_palo(salida), Cartas.nombre_palo(e.palo_triunfo)]
 
 
 ## La carta más fuerte de las jugadas de [param baza] que cumplen [param filtro],
@@ -524,8 +560,11 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"cartas_en_mazo": e.mazo.size() + (1 if e.pinta != "" else 0),
 		"mi_mano": e.manos[jugador_id].duplicate(),
 		"cartas_por_jugador": cartas_por_jugador_,
-		"baza_actual": e.baza_actual.duplicate(true),
-		"ultima_baza": e.ultima_baza.duplicate(true),
+		"baza_actual": _jugadas_a_ids(e.baza_actual),
+		"ultima_baza": {} if e.ultima_baza.is_empty() else {
+			"ganador": e.ultima_baza["ganador"],
+			"cartas": _jugadas_a_ids(e.ultima_baza["cartas"]),
+		},
 		"bazas_jugadas": e.bazas_jugadas,
 		"cantes": e.cantes.map(func(c: Dictionary) -> Dictionary: return {
 			"jugador_id": c["jugador_id"], "palo": Cartas.nombre_palo(c["palo"]), "puntos": c["puntos"],
@@ -536,3 +575,12 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"mano": "idas" if e.mano_actual == EstadoGuinote.Mano.IDAS else "vuelta",
 		"tanteo_idas": e.tanteo_idas.get("total", []),
 	}
+
+
+## Jugadas de una baza como las manda el protocolo del equipo (§6):
+## [code][{ "jugador_id", "carta_id" }][/code].
+static func _jugadas_a_ids(jugadas: Array) -> Array[Dictionary]:
+	var resultado: Array[Dictionary] = []
+	for jugada: Dictionary in jugadas:
+		resultado.append({"jugador_id": jugada["jugador_id"], "carta_id": jugada["carta"]})
+	return resultado

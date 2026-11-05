@@ -14,3 +14,6 @@
 *.ogg binary
 *.mp3 binary
 *.zip binary
+
+# Los .bat de Windows necesitan CRLF: con LF, cmd puede saltar a la etiqueta equivocada.
+*.bat text eol=crlf

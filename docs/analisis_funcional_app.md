@@ -51,9 +51,9 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 
 ## 3. Responsabilidades por carpeta (recordatorio)
 
-- `game/server/`: lógica autoritativa pura. **Ningún script de aquí debe heredar de un nodo visual** (`Node2D`, `Control`, etc.). Si necesita hacerlo, esa lógica está en la carpeta equivocada.
-- `game/client/`: solo presentación e input. Nunca decide si una jugada es válida — se lo pregunta al servidor y espera respuesta.
-- `game/shared/`: lo que ambos necesitan sin duplicar (definición de carta, constantes de mensajes de red, tipos de datos comunes).
+- `game/compartido/logica/motores/`: reglas de cada juego, lógica autoritativa pura. **Ningún script de aquí debe heredar de un nodo visual** (`Node2D`, `Control`, etc.) ni conocer la red. Si necesita hacerlo, esa lógica está en la carpeta equivocada.
+- `game/compartido/logica/game_master/`: controladores de partida que corren en el servidor: reciben jugadas, las aplican con el motor y difunden el estado.
+- `game/compartido/Escenas/` y `game/escenas/`: solo presentación e input (mesa, cartas, menú). Nunca deciden si una jugada es válida — se lo preguntan al servidor y esperan respuesta.
 - `backend/`: todo lo transaccional, sin ningún conocimiento de las reglas de los juegos.
 
 ---
@@ -129,7 +129,9 @@ El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X
 
 ## 6. Protocolo en tiempo real (cliente ↔ servidor de partida)
 
-Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por un único RPC del autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
+⚠️ **Estado actual (prototipo unificado):** este protocolo es el objetivo al reintegrar las salas. Hoy la partida no usa `CanalRed`: `Juego_Motor` (`game/compartido/logica/game_master/juego_motor.gd`) recibe las jugadas por RPC (`intentar_jugar_carta(carta_id)` y `enviar_jugada(jugada)`) y manda a cada jugador `actualizar_vista(vista, jugadas_validas)`, que es exactamente lo que irá en `estado_partida`: la vista de `vista_para_jugador` (§7) y las jugadas con el mismo formato. Diferencia a tener en cuenta: los ids de carta del prototipo son `"<Valor>_<palo>"` (`"Rey_oros"`), no `"oros_12"`; al reintegrar `CanalRed` hay que traducirlos en un solo sitio.
+
+Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por un único RPC del autoload `CanalRed` (`game/shared/canal_red.gd`, pendiente de reintegrar), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
 
 **Cliente → Servidor**
 
@@ -165,9 +167,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 
-**Desconexión y reconexión:** si un jugador se desconecta, su asiento queda libre pero la partida sigue en memoria. Si vuelve a enviar `unirse_partida` para la misma sala (desde la misma o desde otra conexión), recupera su asiento y recibe `partida_iniciada` y `estado_partida` para ponerse al día. Si el mismo usuario se une desde una segunda conexión mientras la primera sigue abierta, se expulsa la primera. *Pendiente de decidir:* qué pasa si un jugador no vuelve (hoy la partida espera indefinidamente) y cuánto tiempo se espera a que alguien envíe `unirse_partida` tras conectarse.
+**Desconexión y reconexión:** si un jugador se desconecta, su asiento queda libre pero la partida sigue en memoria. Si vuelve a enviar `unirse_partida` para la misma sala (desde la misma o desde otra conexión), recupera su asiento y recibe `partida_iniciada` y `estado_partida` para ponerse al día. Si el mismo usuario se une desde una segunda conexión mientras la primera sigue abierta, se expulsa la primera. *Pendiente de decidir:* qué pasa si un jugador no vuelve y cuánto tiempo se espera a que alguien envíe `unirse_partida` tras conectarse. *(En el prototipo unificado, sin salas, no hay reconexión: si alguien se va a mitad de partida, se cancela y se avisa a los demás; si se va antes de empezar, su sitio queda libre.)*
 
-**Identificador de carta (`carta_id`):** `"<palo>_<valor>"` en minúsculas, con palo `oros|copas|espadas|bastos` y valor `1`–`7`, `10` (sota), `11` (caballo) o `12` (rey). Ejemplos: `"oros_1"`, `"espadas_12"`. Lo genera y valida `Carta` (`game/shared/carta.gd`); un id que no corresponde a ninguna carta se rechaza con `error`.
+**Identificador de carta (`carta_id`):** `"<palo>_<valor>"` en minúsculas, con palo `oros|copas|espadas|bastos` y valor `1`–`7`, `10` (sota), `11` (caballo) o `12` (rey). Ejemplos: `"oros_1"`, `"espadas_12"`. Lo genera y valida `Carta` (`game/shared/carta.gd`, pendiente de reintegrar); un id que no corresponde a ninguna carta se rechaza con `error`. *(El prototipo usa todavía `"<Valor>_<palo>"`, p. ej. `"Rey_oros"`, en `game/compartido/logica/motores/cartas.gd`: ver el aviso al principio de esta sección.)*
 
 **Regla importante:** el servidor nunca envía a un cliente las cartas en mano de otro jugador. El snapshot se filtra por destinatario antes de enviarse (ver `vista_para_jugador` en §7).
 
@@ -175,9 +177,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 
 ## 7. Interfaz común del motor de reglas
 
-Contrato que debe implementar cada módulo de juego (`guinote/`, `mus/`, `tute/`) dentro de `game/server/game_engine/`. Es el punto más importante de todo el documento: si esto queda mal diseñado pensando solo en Guiñote, Mus y Tute cuestan mucho más de lo necesario.
+Contrato que debe implementar cada módulo de juego (`guinote/`, `mus/`, `tute_dos/`…) dentro de `game/compartido/logica/motores/`. Es el punto más importante de todo el documento: si esto queda mal diseñado pensando solo en Guiñote, Mus y Tute cuestan mucho más de lo necesario.
 
-Implementado en `game/server/game_engine/motor_de_juego.gd` (clase abstracta), junto con `estado_partida.gd` y `resultado_jugada.gd`:
+Implementado en `game/compartido/logica/motores/motor_de_juego.gd` (clase abstracta), junto con `estado_partida.gd` y `resultado_jugada.gd`. En el prototipo las cartas son ids de texto (`cartas.gd`) y los nombres de las jugadas son constantes de `MotorDeJuego` (`JUGAR_CARTA`, `CANTAR`…):
 
 ```gdscript
 @abstract class_name MotorDeJuego
@@ -215,7 +217,7 @@ Cada juego hereda de `MotorDeJuego` e implementa además `_iniciar(num_jugadores
 - **Errores sin excepciones:** GDScript no las tiene. Una jugada inválida devuelve `ResultadoJugada` con `ok = false` y un `error` legible, que el servidor reenvía tal cual en el mensaje `error` de §6. El `estado` recibido nunca se modifica: el motor trabaja sobre `estado.duplicar()`.
 - **Aleatoriedad inyectada:** el reparto usa el `RandomNumberGenerator` del motor, así una partida con la misma semilla es reproducible en los tests.
 
-`RoomManager` (en `game/server/room_manager.gd`) no conoce las reglas de ningún juego concreto — solo sabe hablar contra esta interfaz. Añadir un juego nuevo no debería tocar ni una línea de `room_manager.gd`.
+`RoomManager` (pendiente de reintegrar) no conoce las reglas de ningún juego concreto — solo sabe hablar contra esta interfaz. Añadir un juego nuevo no debería tocar ni una línea de `room_manager.gd`. Hoy cumple ese papel `Juego_Motor`, con una sola partida por proceso.
 
 ---
 
@@ -271,7 +273,7 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 
 **Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — no aplica directamente aquí porque el cliente no ofrece ningún canal de voz o chat libre entre compañeros durante la jugada; si en el futuro PBI-08 añadiera chat de equipo también durante la partida en curso, habría que revisar si conviene restringirlo por este motivo.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
 
-**Notas de implementación (`game/server/game_engine/guinote/`).** Cómo se traduce lo anterior al motor:
+**Notas de implementación (`game/compartido/logica/motores/guinote/`).** Cómo se traduce lo anterior al motor:
 - **Asientos y sentido de juego:** los asientos se numeran en el orden en que se juega (antihorario). "A la derecha" de `p` es `(p + 1) % 4` y "a la izquierda", `(p + 3) % 4`; las parejas quedan 0-2 contra 1-3, como en §7.
 - **Reparto:** el dador se sortea con el generador aleatorio del motor. No hay corte: con la baraja mezclada al azar no cambia nada.
 - **Robo automático:** al cerrarse cada una de las 4 primeras bazas, el servidor reparte la carta de cada jugador en el orden de robo (el ganador primero); nadie tiene que pedirla. La pinta la roba el último al que le toque en la 4ª baza.
@@ -290,7 +292,8 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
   - La vuelta termina en cuanto la pareja que acaba de ganar una baza, o que acaba de cantar tras ganarla, supera los 100 sumando idas y vuelta. En la vuelta no se aplica el mínimo de 30.
   - Siempre termina antes de su 10ª baza: entre idas y vuelta se reparten al menos 260 tantos, así que alguna pareja supera los 100, y eso solo puede pasar al ganar una baza o al cantar tras ganarla, que es justo cuando se comprueba.
 - **Renuncio:** online no se puede cometer. El servidor solo acepta jugadas válidas y rechaza las demás con un `error`, así que las penalizaciones de renuncio no se implementan.
-- **Estado:** el motor está completo (reparto, robo, arrastre, cantes, Tute, cambio del siete, tanteo y vuelta) y registrado en `MOTORES` de `main_server.gd` como `guinote`. `calcular_resultado` devuelve `{ equipo_ganador, puntos_por_equipo, motivo, manos }`: `motivo` es `tute`, `tantos` o `vuelta`, y `manos` desglosa las idas y, si la hubo, la vuelta en `cartas`, `cantes`, `diez_ultimas` y `total`.
+- **Guiñote a 2 jugadores (⚠️ decisión del prototipo, pendiente de confirmar por el equipo):** el reglamento solo describe la partida de 4. El motor admite también 2, con la misma mecánica: 6 cartas cada uno, **14 bazas con robada** (hasta acabar el mazo) y 6 de arrastre; cada jugador es su propio equipo, así que canta y cambia el siete quien gana la baza. Mismo tanteo: 101, mínimo de 30 de cartas al acabar las idas, y vuelta.
+- **Estado:** el motor está completo (reparto, robo, arrastre, cantes, Tute, cambio del siete, tanteo y vuelta), a 2 y a 4 jugadores, y `Juego_Motor` lo lleva por red. `calcular_resultado` devuelve `{ equipo_ganador, puntos_por_equipo, motivo, manos }`: `motivo` es `tute`, `tantos` o `vuelta`, y `manos` desglosa las idas y, si la hubo, la vuelta en `cartas`, `cantes`, `diez_ultimas` y `total`.
 
 ---
 
@@ -348,7 +351,7 @@ El "mano" habla primero en cada jugada, en este orden fijo: Grande → Chica →
 
 *Fuera de alcance deliberado:* el reglamento original también describe una modalidad "con plato" para apuestas de dinero real entre jugadores presenciales. No aplica a una implementación de puntuación online y queda descartada salvo que el equipo indique lo contrario.
 
-**Notas de implementación (`game/server/game_engine/mus/`).** Cómo se traduce lo anterior al motor:
+**Notas de implementación (`game/compartido/logica/motores/mus/`).** Cómo se traduce lo anterior al motor:
 - **Asientos y sentido de juego:** como en el Guiñote, los asientos se numeran en el orden en que se reparte y se habla (derecha-izquierda, antihorario): "a la derecha" de `p` es `(p + 1) % n`. Las parejas quedan 0-2 contra 1-3 (§7); a 2 jugadores, cada uno es su propio equipo.
 - **Mano y reparto:** la primera mano se sortea con el generador aleatorio del motor (el sorteo de parejas con una carta lo resuelve quien asigna los asientos, §7). No hay corte: con la baraja mezclada al azar no cambia nada. Se dan 4 cartas de una en una, empezando por la mano.
 - **Fase de Mus:** habla la mano y después los demás por orden, con `mus` o `no_mus`; el primer `no_mus` corta el mus y empiezan los lances. Si todos piden mus, cada uno, por turno desde la mano, envía `descartar { cartas }` con entre 1 y 4 de sus cartas. Cuando se ha descartado el último, se dan las que faltan empezando por la mano y se vuelve a preguntar mus, tantas veces como haga falta. Cuántas cartas pidió cada uno es público (`cartas_pedidas` en `estado_partida`).
@@ -366,13 +369,15 @@ El "mano" habla primero en cada jugada, en este orden fijo: Grande → Chica →
 - **Fin de la partida (⚠️ pendiente de confirmar):** §9 dice a la vez "3 juegos completos (al mejor de 3)" y "quien primero gane 3 juegos completos". El motor toma lo primero: gana la partida quien gana 2 juegos. Tanto los juegos para ganar como las piedras por juego (40, o 30 en la variante corta) son parámetros del constructor de `MotorMus`, así que cambiarlo es una línea.
 - **Lo que se ve al terminar cada mano:** `ultima_mano` en `estado_partida` trae las cartas de todos (ya enseñadas), los lances, los cobros y, en `juego_para`, el equipo que ganó el juego en esa mano (o `-1`). El servidor reparte la siguiente mano en el acto, sin esperar a que nadie confirme.
 - **Resultado:** `calcular_resultado` devuelve `{ equipo_ganador, puntos_por_equipo, juegos, piedras_por_juego }`. `puntos_por_equipo` son los juegos ganados por cada pareja, y `juegos` dice cómo terminó cada uno: `{ equipo, piedras, motivo }`, con `motivo` igual a `piedras` u `ordago`.
-- **Estado:** el motor está completo (reparto, mus y descartes, lances y envites, cobro, fin del juego y de la partida, a 2 y a 4 jugadores) y registrado en `MOTORES` de `main_server.gd` como `mus`. Para poder jugarlo desde el cliente falta que el backend admita crear salas de Mus (`POST /salas` solo admite `guinote`, §5), con su capacidad de 2 o 4.
+- **Estado:** el motor está completo (reparto, mus y descartes, lances y envites, cobro, fin del juego y de la partida, a 2 y a 4 jugadores) y se juega en la mesa con `Juego_Motor`: botones de mus, descarte eligiendo cartas, envites de 2 y 5 piedras y órdago (el motor admite de 2 a 10), y al acabar cada mano se enseñan las cartas de todos. Para jugarlo con salas falta que el backend admita crear salas de Mus (`POST /salas` solo admite `guinote`, §5), con su capacidad de 2 o 4.
 
 ---
 
 ## 10. Reglas funcionales — Tute (PBI-05, prioridad media)
 
-Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote y Mus, el reglamento del Tute define **tres variantes con mecánica distinta según el número de jugadores** — no es solo "menos gente en la mesa": cambia si existe fase de robo o no. **Decisión de equipo: PBI-05 implementa únicamente el Tute para 4 jugadores por parejas** (reutiliza el mismo patrón de mesa y motor que Guiñote). Las variantes de 2 y 3 jugadores quedan documentadas por completitud pero **fuera de alcance actual**; si se quisieran más adelante, serían una PBI nueva.
+Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote y Mus, el reglamento del Tute define **tres variantes con mecánica distinta según el número de jugadores** — no es solo "menos gente en la mesa": cambia si existe fase de robo o no. **Decisión de equipo: PBI-05 implementa únicamente el Tute para 4 jugadores por parejas** (reutiliza el mismo patrón de mesa y motor que Guiñote). Las variantes de 2 y 3 jugadores quedan documentadas por completitud pero **fuera de alcance actual**; si se quisieran más adelante, serían una PBI nueva. *(⚠️ En el prototipo unificado la variante de 2 ya está implementada, ver más abajo; falta que el equipo decida si entra en el alcance.)*
+
+**Implementación del Tute por parejas:** `game/compartido/logica/game_master/reglas_tute.gd` (reglas puras: reparto, arrastre con asistir/montar/fallar/pisar y contrafallo, cantes, Tute y tanteo) y `game/compartido/logica/motores/tute/motor_tute.gd` (`MotorTute`, que usa esas reglas para el contrato de §7 y lo lleva por red `Juego_Motor`). Los cantes no son automáticos: tras ganar baza su pareja, al ganador y a su compañero les aparecen botones con lo que pueden cantar, primero lo mejor (Tute > las 40 > las 20); cada uno canta uno, hasta que echa su siguiente carta. Una sola mano; con empate a tantos gana la pareja de la última baza.
 
 **Baraja, orden y valor (común a las 3 variantes).** Española de 40 cartas. De mayor a menor: As, Tres, Rey, **Caballo, Sota**, Siete, Seis, Cinco, Cuatro, Dos.
 
@@ -397,7 +402,7 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 - Tute: reunir los 4 Reyes ("Tute de reyes") o los 4 Caballos ("Tute de caballos") en la mano de **un solo** integrante de la pareja gana la mano al instante.
 - Gana la mano la pareja con más tantos (cartas de bazas + cantes + últimas).
 
-### Tute para 2 jugadores (fuera de alcance actual — documentado por completitud)
+### Tute para 2 jugadores (implementado en el prototipo — ⚠️ alcance pendiente de confirmar)
 
 - Se reparten **8 cartas** cada uno; el resto queda en un mazo (baceta) bajo la carta de triunfo volteada.
 - **Mientras queda baceta:** solo es obligatorio asistir al palo de triunfo (sin necesidad de "montarlo"); para el resto de palos no hay obligación de asistir ni fallar. **Al agotarse la baceta:** pasa a ser obligatorio asistir, montar y fallar (arrastre completo).
@@ -406,6 +411,12 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 - **Capote:** jugada especial — anunciándolo de antemano, un jugador puede intentar ganar las 8 bazas que quedan tras agotarse la baceta; si el rival gana aunque sea una, es el rival quien gana la mano entera.
 - ⚠️ En esta variante **no se admite la jugada de Tute** (4 reyes/caballos): solo se gana por puntos (101) o por Capote.
 - Igual que en Guiñote: si nadie llega a 101 en una mano, se reparte una segunda ("dar la vuelta") llevando el tanteo de memoria.
+
+**Notas de implementación (`game/compartido/logica/motores/tute_dos/motor_tute_dos.gd`).** Hereda del motor del Guiñote, porque la mecánica es la misma (mazo, robo, arrastre al acabarse, cantes, cambio de la pinta, 101 y vuelta), y cambia lo propio del Tute: 8 cartas (12 bazas con robo y 8 de arrastre), orden y puntos con el Caballo sobre la Sota, cantes de Rey y Caballo y sin jugada de Tute. Lo que el texto deja abierto se resuelve así (⚠️ pendiente de confirmar):
+- **"Solo es obligatorio asistir al palo de triunfo":** si sale triunfo y tienes triunfo, tienes que echar triunfo, cualquiera (sin montar); con otro palo de salida juegas libre.
+- **Cambio de la pinta:** con el 7 si la pinta es As, Tres o figura; con el 2 si es blanca (incluido el 7); si la pinta es el 2, no se puede cambiar. Se puede hacer, igual que los cantes, desde que ganas la baza hasta que el rival echa carta en la siguiente. En el último robo, el robo espera a que decidas.
+- **Capote:** se anuncia con un botón cuando se acaba la baceta, antes de que se eche la primera carta del arrastre, y puede anunciarlo cualquiera de los dos. Si quien lo anunció gana las 8 bazas, gana la partida; en cuanto pierde una, la gana el rival.
+- **Ganar por tantos:** se necesita pasar de 100 (101 o más), sin el mínimo de 30 del Guiñote. Si los dos pasan de 100 al acabar las idas, gana quien tenga más; con empate, quien hizo la última baza. Si nadie pasa, vuelta, que termina en cuanto quien gana una baza (o canta tras ganarla) pasa de 100 sumando las idas.
 
 ### Tute para 3 jugadores ("Tute Arrastrado") (fuera de alcance actual — documentado por completitud)
 
@@ -440,3 +451,4 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 - Las secciones marcadas con ⚠️ son avisos permanentes para quien programe (p. ej. que Guiñote y Tute no comparten la tabla de valores de cartas), no decisiones pendientes.
 - **Corrección de reglas (23/09/2026):** la fuente usada originalmente para §8 (Guiñote) tenía mal el reparto y la fase de robo; se ha corregido contra el reglamento oficial del torneo aportado por el equipo. Mus (§9) y Tute (§10) no se han tocado en esta revisión — si alguien detecta el mismo tipo de problema en esas secciones, hay que avisar para corregirlas también con una fuente igual de fiable.
 - **Estado actual:** las reglas de Mus y Tute siguen cerradas tal como estaban, con sus decisiones de producto ya tomadas (Tute limitado a la variante de 4 jugadores por parejas, sin señas en Mus online). Las de Guiñote (§8) están corregidas, cerradas e implementadas. Las de Mus (§9) están implementadas en el motor. En los dos casos, los puntos que el texto dejaba abiertos y cómo los resuelve el motor están en las notas de implementación de cada sección (marcados con ⚠️), pendientes de que el equipo los confirme.
+- **Prototipo unificado (3/11/2026):** los tres juegos se juegan en la mesa, 1 contra 1 y por parejas. El Guiñote de 2 (§8) y el Tute de 2 (§10) son decisiones del prototipo que el texto no cubría o dejaba fuera de alcance: sus notas de implementación están marcadas con ⚠️ para que el equipo las confirme o las descarte.

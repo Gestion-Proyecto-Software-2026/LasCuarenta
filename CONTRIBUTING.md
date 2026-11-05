@@ -81,10 +81,11 @@ Estas ramas se actualizan si el desglose real de un PBI cambia durante el groomi
 
 **Juego (GUT):**
 - GUT barre `game/tests/` y sus subcarpetas (configurado en `game/.gutconfig.json`). Solo se ejecutan los ficheros `test_*.gd` que extienden `GutTest`.
-- Tests unitarios de `shared/` y `server/game_engine/` en `game/tests/unit/`, reflejando la ruta del script probado (p. ej. `shared/baraja.gd` → `tests/unit/shared/test_baraja.gd`, `server/game_engine/guinote/motor_guinote.gd` → `tests/unit/server/game_engine/guinote/test_motor_guinote.gd`). Los que necesitan varias piezas a la vez (`RoomManager` + un motor) van en `game/tests/integration/`.
-- El 60% de cobertura mínima aplica a la lógica de juego (`shared/` + `server/game_engine/`), no al cliente.
-- En local, igual que en CI (Godot 4.7.2): `godot --headless --path game -s addons/gut/gut_cmdln.gd`.
-- Nombres de ficheros y carpetas de `game/` en `snake_case`, igual que el `class_name` en `snake_case` (`class_name Baraja` → `baraja.gd`), según la guía de estilo de Godot. Cada escena del cliente va en su propia carpeta junto a su script (`client/scenes/carta/carta.tscn` + `carta.gd`).
+- Los tests de cada motor van en `game/tests/unit/<juego>/` (p. ej. `compartido/logica/motores/mus/motor_mus.gd` → `tests/unit/mus/test_motor_mus.gd`).
+- El 60% de cobertura mínima aplica a la lógica de juego (`compartido/logica/motores/` y las reglas del Tute), no a la mesa.
+- En local, igual que en CI (Godot 4.7.2), en dos pasos: `godot --headless --path game --import` y después `godot --headless --path game -s addons/gut/gut_cmdln.gd`. **Sin el `--import`, GUT no ejecuta ningún test y aun así termina con éxito:** comprobad que sale el resumen `Passing Tests`.
+- Las partidas completas por red se prueban con `game/herramientas/partidas_red.sh`.
+- Nombres de ficheros y carpetas nuevos de `game/` en `snake_case`, igual que el `class_name` en `snake_case` (`class_name Cartas` → `cartas.gd`), según la guía de estilo de Godot. Cada escena va en su propia carpeta junto a su script (`compartido/Escenas/carta/` = `Carta_escena.tscn` + `Carta_escena.gd`; algunas carpetas heredadas del prototipo aún no siguen la convención).
 
 ## 6. Antes de abrir un PR
 
@@ -102,10 +103,12 @@ Checklist resumido de la Definición de Hecho (fuente completa: informe de la Pr
 | Carpeta | Contenido |
 |---|---|
 | `backend/` | API REST (Node.js + Express + PostgreSQL) |
-| `game/client/` | Cliente Godot — solo presentación e input |
-| `game/server/` | Servidor de partida — lógica autoritativa |
-| `game/shared/` | Lo que cliente y servidor de partida necesitan sin duplicar |
+| `game/escenas/` | Menú de los 6 modos y escena de partida (servidor o jugador) |
+| `game/compartido/Escenas/` | Carta y tapete (la mesa): solo presentación e input |
+| `game/compartido/logica/motores/` | Reglas de cada juego: lógica pura, sin red ni nodos visuales |
+| `game/compartido/logica/game_master/` | Controladores de partida por red (el servidor manda, la mesa pinta) |
 | `game/tests/` | Tests GUT de la lógica de juego |
+| `game/herramientas/` | Scripts de prueba (partidas completas por red) |
 | `game/addons/gut/` | Framework de testing GUT |
 | `infra/` | Configuración de despliegue (nginx + TLS) |
 | `docs/` | Documentación técnica y de arquitectura |

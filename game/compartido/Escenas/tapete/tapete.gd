@@ -22,6 +22,8 @@ const DESPLAZAMIENTO_BAZA := {0: Vector2(0, 82), 1: Vector2(112, 0), 2: Vector2(
 ## Un color por pareja: tu compañero lleva el tuyo y los rivales el otro.
 const COLOR_PAREJA := [Color(0.25, 0.6, 1.0), Color(1.0, 0.45, 0.3)]
 const COLOR_TURNO := Color(1.0, 0.85, 0.3)
+## Letrero de "esa carta no vale" y demás rechazos del servidor.
+const COLOR_ERROR := Color(1.0, 0.55, 0.5)
 const COLOR_NO_JUGABLE := Color(0.45, 0.45, 0.45)
 ## Abre y cierra el panel de depuración (solo en builds de depuración).
 const TECLA_DEPURACION := KEY_F3
@@ -68,8 +70,9 @@ var autojugar: bool = false
 ## Con autojugar, si pulsa el botón de cantar cuando le sale (true) o lo ignora.
 var autocantar: bool = true
 
-## Juego de la mesa: "tute" (Juego_Tute) o el que lleve Juego_Motor ("guinote", "tute_dos"...).
-var _juego := "tute"
+## Juego de la mesa, el que lleve Juego_Motor ("guinote", "tute", "tute_dos" o "mus").
+## Vacío en el Guiñote original de Javi, que no configura la mesa.
+var _juego := ""
 ## Si el juego tiene mazo para robar: entonces se pinta la pila en vez de la pinta en la esquina.
 var _con_mazo := false
 var _pila: Node2D
@@ -79,13 +82,11 @@ var _palo_triunfo := ""
 ## Última vista recibida de Juego_Motor.
 var _vista: Dictionary = {}
 var _caja_acciones: VBoxContainer
-# Mus: cartas elegidas para descartarse, texto del lance en el centro,
-# marcador de piedras y panel con las cartas de todos al acabar la mano.
-var _seleccion_descarte: Array = []
-var _boton_descartar: Button
-var _texto_centro: Label
+## Lo que solo se hace en el Mus (mesa_mus.gd); null en el resto de juegos.
+var _mus: MesaMus
+## Arriba a la derecha: piedras del Mus, o las idas durante la vuelta.
 var _texto_marcador: Label
-var _panel_fin_mano: PanelContainer
+var _aviso_error: Label
 
 var _textura_dorso: Texture2D
 var _tween_turno: Tween
@@ -167,7 +168,7 @@ func reorganizar_mano():
 		var pos_y = centro_abanico.y + (t_offset * t_offset) * altura_curva
 		var rot = lerp(-rotacion_max, rotacion_max, t)
 		# Mus: las cartas elegidas para descartarse se quedan levantadas.
-		if _seleccion_descarte.has(carta):
+		if _mus and _mus.seleccion.has(carta):
 			pos_y -= 40.0
 
 		# ---- NUEVO: GUARDAMOS LAS POSICIONES BASE EN LA CARTA ----
@@ -192,9 +193,9 @@ func reorganizar_mano():
 func _on_carta_soltada(carta_soltada):
 
 	# En el Mus no se echan cartas: durante tu descarte, pulsar una la elige.
-	if _juego == "mus" and _modo_mesa_completa():
-		if _puedo_descartar():
-			_alternar_descarte(carta_soltada)
+	if _mus:
+		if _mus.puedo_descartar():
+			_mus.alternar_descarte(carta_soltada)
 		else:
 			reorganizar_mano()
 		return
@@ -293,13 +294,16 @@ func _on_area_mesa_area_exited(area):
 @rpc("authority", "call_remote", "reliable")
 func sincronizar_mazo(cantidad_cartas: int, id_triunfo: String = ""):
 
-	# 1. Limpiamos el mazo visual anterior si existía (por si se actualiza a mitad de partida)
-	# En la mesa nueva, si el juego tiene mazo, la pila va junto a la baza.
-	if _modo_mesa_completa() and _con_mazo:
-		if _pila_actual != [cantidad_cartas, id_triunfo]:
-			_dibujar_pila(cantidad_cartas, id_triunfo)
+	# En la mesa nueva solo se redibuja si ha cambiado algo (llega con cada vista).
+	if _modo_mesa_completa() and _pila_actual == [cantidad_cartas, id_triunfo]:
 		return
+	# Si el juego tiene mazo, la pila va junto a la baza.
+	if _modo_mesa_completa() and _con_mazo:
+		_dibujar_pila(cantidad_cartas, id_triunfo)
+		return
+	_pila_actual = [cantidad_cartas, id_triunfo]
 
+	# 1. Limpiamos el mazo visual anterior si existía (por si se actualiza a mitad de partida)
 	for carta in cartas_en_mazo:
 		carta.queue_free()
 	cartas_en_mazo.clear()
@@ -491,9 +495,9 @@ func _on_pasar_pressed():
 
 
 # ==========================================
-# MESA DE 4 JUGADORES (TUTE). RPCs que solo manda Juego_Tute.
-# En pantalla solo hay cartas, dorsos y etiquetas "J#"; todo el texto de
-# seguimiento va a la consola y al panel de depuración (F3).
+# MESA NUEVA (2 o 4 jugadores). RPCs que manda Juego_Motor.
+# En pantalla solo hay cartas, dorsos, etiquetas "J#" y letreros cortos; todo el
+# texto de seguimiento va a la consola y al panel de depuración (F3).
 # ==========================================
 
 ## El servidor dice quién se sienta dónde, cuál es la pinta y quién reparte.
@@ -501,7 +505,8 @@ func _on_pasar_pressed():
 @rpc("authority", "call_remote", "reliable")
 func configurar_mesa(peer_ids: Array, nombres: Array, id_pinta: String, peer_dador: int, opciones: Dictionary = {}) -> void:
 	_con_mazo = opciones.get("mazo", false)
-	_juego = opciones.get("juego", "tute")
+	_juego = opciones.get("juego", "")
+	_mus = MesaMus.new(self) if _juego == "mus" else null
 	_palo_triunfo = _palo_de(id_pinta)
 	asientos = peer_ids
 	nombres_por_peer.clear()
@@ -535,15 +540,6 @@ func marcar_cartas_jugables(ids: Array) -> void:
 		carta.self_modulate = Color.WHITE if ids.is_empty() or ids.has(carta.id) else COLOR_NO_JUGABLE
 	if autojugar and not ids.is_empty():
 		_jugar_solo(ids)
-
-## Enseña el botón de cantar con lo que puedes cantar ("Cantar las 40 (oros)"...).
-@rpc("authority", "call_remote", "reliable")
-func ofrecer_cante(texto: String) -> void:
-	_depurar("Puedes cantar: " + texto)
-	boton_cantar.text = texto
-	boton_cantar.show()
-	if autojugar and autocantar:
-		_on_boton_cantar_pressed()
 
 ## Antes de empezar se ve en el centro ("Esperando jugadores 2/4"); durante la
 ## partida solo va a la consola y al panel de depuración.
@@ -635,31 +631,47 @@ func actualizar_vista(vista: Dictionary, jugadas: Array) -> void:
 		else:
 			acciones.append(jugada)
 	marcar_cartas_jugables(ids)
-	if _juego == "mus":
-		_actualizar_mesa_mus(vista, acciones)
+	if _mus:
+		_mus.actualizar(vista, acciones)
 	else:
 		_mostrar_acciones(acciones)
+		_poner_marcador(_marcador_de_bazas(vista))
 
 ## Un jugador dice algo en voz alta ("¡Las 40!", "Capote"...): sale junto a su
 ## etiqueta. Con peer_id = -1 es un aviso de la mesa y sale en el centro.
 @rpc("authority", "call_remote", "reliable")
 func anunciar(peer_id: int, texto: String) -> void:
 	_depurar("%s: %s" % [nombres_por_peer.get(peer_id, "Mesa"), texto])
-	var etiqueta := _crear_texto(24)
-	etiqueta.text = texto
-	etiqueta.label_settings.font_color = COLOR_TURNO
-	etiqueta.z_index = 120
-	add_child(etiqueta)
+	var etiqueta := _mostrar_letrero(texto, COLOR_TURNO)
 	var ancho := etiqueta.get_minimum_size().x
 	var pos := _centro_baza() - Vector2(ancho / 2.0, 130.0)
 	if asientos.has(peer_id):
 		pos = _pos_etiqueta(_posicion_relativa(peer_id)) + Vector2(0, 40)
 		pos.x = minf(pos.x, _tam().x - ancho - 10.0)
 	etiqueta.position = pos
-	var tween := create_tween()
+
+## Solo para ti, cuando el servidor rechaza lo que has intentado (p. ej. por
+## qué no vale esa carta): sale debajo de tu mano.
+@rpc("authority", "call_remote", "reliable")
+func avisar_error(texto: String) -> void:
+	_depurar(texto)
+	if _aviso_error:
+		_aviso_error.queue_free()
+	_aviso_error = _mostrar_letrero(texto, COLOR_ERROR, 20)
+	_aviso_error.position = Vector2((_tam().x - _aviso_error.get_minimum_size().x) / 2.0, _tam().y - 36.0)
+
+## Un texto que se borra solo al cabo de unos segundos.
+func _mostrar_letrero(texto: String, color: Color, tam_fuente := 24) -> Label:
+	var etiqueta := _crear_texto(tam_fuente)
+	etiqueta.text = texto
+	etiqueta.label_settings.font_color = color
+	etiqueta.z_index = 120
+	add_child(etiqueta)
+	var tween := etiqueta.create_tween()
 	tween.tween_interval(DURACION_ANUNCIO)
 	tween.tween_property(etiqueta, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(etiqueta.queue_free)
+	return etiqueta
 
 ## Deja la mano como dice el servidor: quita las que ya no tienes (p. ej. el 7
 ## que cambias por la pinta) y añade las robadas, sin desordenar las demás.
@@ -690,7 +702,7 @@ func _sincronizar_baza(baza: Array) -> void:
 	var mia := ""
 	for jugada: Dictionary in baza:
 		if asientos[jugada["jugador_id"]] == yo:
-			mia = jugada["carta"]
+			mia = jugada["carta_id"]
 	# Tu carta se recoge cuando ya la aceptó el servidor y no está en la baza en
 	# curso. Mirar solo si sigue en tu mano no basta: en la vuelta se reparte otra
 	# vez y te puede volver a tocar la misma carta.
@@ -701,7 +713,7 @@ func _sincronizar_baza(baza: Array) -> void:
 	for jugada: Dictionary in baza:
 		var peer: int = asientos[jugada["jugador_id"]]
 		if peer != yo or carta_en_mesa == null:
-			faltan[jugada["carta"]] = peer
+			faltan[jugada["carta_id"]] = peer
 	for carta in cartas_otros_en_mesa.duplicate():
 		if faltan.has(carta.get_meta("id_carta")):
 			faltan.erase(carta.get_meta("id_carta"))
@@ -725,17 +737,12 @@ func _mostrar_acciones(acciones: Array, automaticas: Variant = null) -> void:
 	for hijo in _caja_acciones.get_children():
 		_caja_acciones.remove_child(hijo)
 		hijo.queue_free()
-	_boton_descartar = null
 	for jugada: Dictionary in acciones:
 		var boton := Button.new()
 		boton.text = _texto_jugada(jugada)
 		boton.custom_minimum_size = Vector2(240, 40)
-		if jugada["tipo"] == MotorDeJuego.DESCARTAR:
-			# Se descarta de las cartas que hayas elegido en la mano.
-			_boton_descartar = boton
-			boton.pressed.connect(_on_descartar_pulsado)
-			_actualizar_boton_descartar()
-		else:
+		# El botón de descartarse del Mus lo prepara la parte del Mus.
+		if not (_mus and _mus.preparar_boton(boton, jugada)):
 			boton.pressed.connect(_on_accion_pulsada.bind(jugada))
 		_caja_acciones.add_child(boton)
 	_caja_acciones.reset_size()
@@ -752,6 +759,10 @@ func _on_accion_pulsada(jugada: Dictionary) -> void:
 	_controlador().enviar_jugada.rpc_id(1, jugada)
 
 func _texto_jugada(jugada: Dictionary) -> String:
+	if _mus:
+		var del_mus := _mus.texto_jugada(jugada)
+		if del_mus != "":
+			return del_mus
 	match jugada["tipo"]:
 		MotorDeJuego.CANTAR:
 			if jugada["palo"] == _palo_triunfo:
@@ -767,30 +778,13 @@ func _texto_jugada(jugada: Dictionary) -> String:
 			return "No cambiar la pinta"
 		MotorDeJuego.CAPOTE:
 			return "Anunciar capote"
-		MotorDeJuego.MUS:
-			return "Mus"
-		MotorDeJuego.NO_MUS:
-			return "No hay mus"
-		MotorDeJuego.DESCARTAR:
-			return "Descartar"
-		MotorDeJuego.PASAR:
-			return "Paso"
-		MotorDeJuego.ENVIDAR:
-			var hay_envite := not (_vista.get("envite", {}) as Dictionary).is_empty()
-			return ("Subo %d" if hay_envite else "Envido %d") % jugada["cantidad"]
-		MotorDeJuego.ORDAGO:
-			return "¡Órdago!"
-		MotorDeJuego.QUIERO:
-			return "Quiero"
-		MotorDeJuego.NO_QUIERO:
-			return "No quiero"
 	return jugada["tipo"]
 
 ## Con autojugar: canta y cambia la pinta si puede (o nunca, con no_cantar).
 func _accion_automatica(acciones: Array) -> void:
 	await get_tree().create_timer(0.05).timeout
-	if _juego == "mus":
-		_on_accion_pulsada(_jugada_automatica_mus(acciones))
+	if _mus:
+		_on_accion_pulsada(_mus.jugada_automatica(acciones))
 		return
 	var elegida := {}
 	for jugada: Dictionary in acciones:
@@ -802,183 +796,45 @@ func _accion_automatica(acciones: Array) -> void:
 	if not elegida.is_empty():
 		_on_accion_pulsada(elegida)
 
-## Con autojugar en el Mus: pide mus una vez, se descarta de lo que no son reyes
-## ni ases, envida en Pares y Juego, y quiere los envites (o no, con no_cantar).
-func _jugada_automatica_mus(acciones: Array) -> Dictionary:
-	var tipos := acciones.map(func(j: Dictionary) -> String: return j["tipo"])
-	if MotorDeJuego.MUS in tipos:
-		return {"tipo": MotorDeJuego.MUS if _vista["rondas_de_descarte"] == 0 else MotorDeJuego.NO_MUS}
-	if MotorDeJuego.DESCARTAR in tipos:
-		var mano: Array = _vista["mi_mano"]
-		var malas := mano.filter(func(id: String) -> bool:
-			return Cartas.valor(id) not in [Cartas.REY, Cartas.TRES, Cartas.AS, Cartas.DOS])
-		return {"tipo": MotorDeJuego.DESCARTAR, "cartas": malas if not malas.is_empty() else [mano[0]]}
-	var con_jugada: bool = _vista.get("lance") in ["pares", "juego"]
-	var envite: Dictionary = _vista.get("envite", {})
-	if envite.is_empty():
-		return {"tipo": MotorDeJuego.ENVIDAR, "cantidad": 2} if con_jugada else {"tipo": MotorDeJuego.PASAR}
-	if con_jugada and not envite["ordago"] and envite["apuesta"] < 6:
-		return {"tipo": MotorDeJuego.ENVIDAR, "cantidad": 2}
-	return {"tipo": MotorDeJuego.QUIERO if autocantar else MotorDeJuego.NO_QUIERO}
+# --- Marcador y equipos ---
 
-# --- Mus ---
-
-## Envites que se ofrecen como botón: el de 2 ("Envido"), el de 5 y el órdago.
-const ENVITES_CON_BOTON := [2, 5]
-
-func _actualizar_mesa_mus(vista: Dictionary, acciones: Array) -> void:
-	if _panel_fin_mano:
-		_panel_fin_mano.hide()
-	if vista["fase"] != "descarte" or vista["turno"] != _mi_asiento():
-		_elegir_para_descarte([])
-	else:
-		_elegir_para_descarte(_seleccion_descarte.filter(func(c): return cartas_en_mano.has(c)))
-	var botones: Array = []
-	var descarte_puesto := false
-	for jugada: Dictionary in acciones:
-		match jugada["tipo"]:
-			MotorDeJuego.DESCARTAR:
-				if not descarte_puesto:
-					botones.append({"tipo": MotorDeJuego.DESCARTAR})
-					descarte_puesto = true
-			MotorDeJuego.ENVIDAR:
-				if jugada["cantidad"] in ENVITES_CON_BOTON:
-					botones.append(jugada)
-			_:
-				botones.append(jugada)
-	_mostrar_acciones(botones, acciones)
-
-	var lineas := PackedStringArray()
-	match vista["fase"]:
-		"mus":
-			lineas.append("¿Mus?")
-		"descarte":
-			lineas.append("Descarte: elige las cartas que quieres cambiar" if vista["turno"] == _mi_asiento() else "Descartes")
-		_:
-			lineas.append("Lance: %s" % str(vista["lance"]).capitalize())
-	var envite: Dictionary = vista.get("envite", {})
-	if not envite.is_empty():
-		lineas.append(("¡Órdago de %s!" if envite["ordago"] else "Envite de %s: %d piedras") % (
-			[_nombre_equipo_mus(envite["equipo"])] if envite["ordago"] else [_nombre_equipo_mus(envite["equipo"]), envite["apuesta"]]))
-	for clave in ["tienen_pares", "tienen_juego"]:
-		if vista.get(clave) != null:
-			var quienes := PackedStringArray()
-			for asiento in asientos.size():
-				quienes.append("%s %s" % [_abreviatura(asientos[asiento]), "sí" if vista[clave][asiento] else "no"])
-			lineas.append("%s: %s" % ["Pares" if clave == "tienen_pares" else "Juego", " · ".join(quienes)])
-	if vista["rondas_de_descarte"] > 0 and vista["fase"] == "mus":
-		var pedidas := PackedStringArray()
-		for asiento in asientos.size():
-			pedidas.append("%s %d" % [_abreviatura(asientos[asiento]), vista["cartas_pedidas"][asiento]])
-		lineas.append("Pidieron: " + " · ".join(pedidas))
-	if _texto_centro == null:
-		_texto_centro = _crear_texto(22)
-		_texto_centro.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		add_child(_texto_centro)
-	_texto_centro.text = "\n".join(lineas)
+## Arriba a la derecha: las piedras en el Mus, y en la vuelta del Guiñote y del
+## Tute de 2, cómo acabaron las idas (el resto del tanteo se lleva de memoria).
+## Texto vacío = no se enseña nada.
+func _poner_marcador(texto: String) -> void:
 	if _texto_marcador == null:
 		_texto_marcador = _crear_texto(20)
 		_texto_marcador.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		add_child(_texto_marcador)
-	_texto_marcador.text = "Piedras: %s %d · %s %d\nJuegos: %d - %d (a %d piedras)\nEs mano %s" % [
-		_nombre_equipo_mus(0), vista["piedras"][0], _nombre_equipo_mus(1), vista["piedras"][1],
-		vista["juegos"][0], vista["juegos"][1], vista["piedras_por_juego"], _abreviatura(asientos[vista["mano"]])]
-	_colocar_textos_mus()
+	_texto_marcador.text = texto
+	_texto_marcador.visible = texto != ""
+	_colocar_textos()
 
-func _colocar_textos_mus() -> void:
-	if _texto_centro:
-		_texto_centro.reset_size()
-		_texto_centro.position = _centro_baza() - Vector2(_texto_centro.size.x / 2.0, _texto_centro.size.y / 2.0)
+func _marcador_de_bazas(vista: Dictionary) -> String:
+	var idas: Array = vista.get("tanteo_idas", [])
+	if vista.get("mano") != "vuelta" or idas.size() != 2:
+		return ""
+	return "Vuelta · idas: %s %d · %s %d" % [_nombre_equipo(0), idas[0], _nombre_equipo(1), idas[1]]
+
+func _colocar_textos() -> void:
+	if _mus:
+		_mus.colocar()
 	if _texto_marcador:
 		_texto_marcador.reset_size()
-		_texto_marcador.position = Vector2(_tam().x - _texto_marcador.size.x - 14.0, 12.0)
+		# Por debajo de la fila de etiquetas de arriba, que con nombres largos llega hasta aquí.
+		_texto_marcador.position = Vector2(_tam().x - _texto_marcador.size.x - 14.0, 64.0)
 
 ## "J1" en la mesa de 2; "Pareja A" en la de 4.
-func _nombre_equipo_mus(equipo: int) -> String:
+func _nombre_equipo(equipo: int) -> String:
 	if asientos.size() == 2:
 		return _abreviatura(asientos[equipo])
 	return "Pareja %s" % "AB"[equipo]
 
-## Pulsar una carta durante tu descarte la marca o desmarca (sube un poco).
-func _alternar_descarte(carta) -> void:
-	var elegidas := _seleccion_descarte.duplicate()
-	if elegidas.has(carta):
-		elegidas.erase(carta)
-	else:
-		elegidas.append(carta)
-	_elegir_para_descarte(elegidas)
-
-func _elegir_para_descarte(cartas: Array) -> void:
-	_seleccion_descarte = cartas
-	for carta in cartas_en_mano:
-		carta.self_modulate = Color(1.0, 0.85, 0.6) if cartas.has(carta) else Color.WHITE
-	_actualizar_boton_descartar()
-	reorganizar_mano()
-
-func _puedo_descartar() -> bool:
-	return _juego == "mus" and _vista.get("fase") == "descarte" and _vista.get("turno") == _mi_asiento()
-
-func _actualizar_boton_descartar() -> void:
-	if _boton_descartar:
-		_boton_descartar.disabled = _seleccion_descarte.is_empty()
-		_boton_descartar.text = "Elige cartas para descartar" if _seleccion_descarte.is_empty() \
-			else "Descartar %d" % _seleccion_descarte.size()
-
-func _on_descartar_pulsado() -> void:
-	var ids: Array = _seleccion_descarte.map(func(c): return c.id)
-	_elegir_para_descarte([])
-	_on_accion_pulsada({"tipo": MotorDeJuego.DESCARTAR, "cartas": ids})
-
-## Al acabar la mano se enseñan las cartas de todos y lo que cobra cada pareja.
+## Mus: al acabar la mano se enseñan las cartas de todos y lo que cobra cada pareja.
 @rpc("authority", "call_remote", "reliable")
 func mostrar_fin_de_mano(ultima: Dictionary) -> void:
-	_mostrar_acciones([])
-	if _panel_fin_mano == null:
-		_panel_fin_mano = PanelContainer.new()
-		_panel_fin_mano.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var estilo := StyleBoxFlat.new()
-		estilo.bg_color = Color(0, 0, 0, 0.8)
-		estilo.border_color = COLOR_TURNO
-		estilo.set_border_width_all(2)
-		estilo.set_corner_radius_all(12)
-		estilo.set_content_margin_all(14)
-		_panel_fin_mano.add_theme_stylebox_override("panel", estilo)
-		_panel_fin_mano.z_index = 140
-		add_child(_panel_fin_mano)
-	for hijo in _panel_fin_mano.get_children():
-		hijo.queue_free()
-	var columna := VBoxContainer.new()
-	_panel_fin_mano.add_child(columna)
-	var titulo := _crear_texto(20)
-	titulo.text = "Fin de la mano: se enseñan las cartas"
-	columna.add_child(titulo)
-	for asiento in ultima["manos"].size():
-		var fila := HBoxContainer.new()
-		fila.add_theme_constant_override("separation", 6)
-		var nombre := _crear_texto(18)
-		nombre.text = _abreviatura(asientos[asiento])
-		nombre.custom_minimum_size = Vector2(44, 0)
-		nombre.label_settings.font_color = COLOR_PAREJA[asiento % 2]
-		fila.add_child(nombre)
-		for id: String in ultima["manos"][asiento]:
-			var imagen := TextureRect.new()
-			imagen.texture = (load("res://data/Cartas/%s.tres" % id) as Carta).imagen
-			imagen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			imagen.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
-			imagen.custom_minimum_size = Vector2(46, 70)
-			fila.add_child(imagen)
-		columna.add_child(fila)
-	var cobros := PackedStringArray()
-	for cobro: Dictionary in ultima["cobros"]:
-		cobros.append("%s: %s +%d" % [str(cobro["lance"]).capitalize(), _nombre_equipo_mus(cobro["equipo"]), cobro["piedras"]])
-	var texto := _crear_texto(16)
-	texto.text = "\n".join(cobros) if not cobros.is_empty() else "Nadie cobra nada más."
-	if ultima["juego_para"] != -1:
-		texto.text += "\n¡Juego para %s!" % _nombre_equipo_mus(ultima["juego_para"])
-	columna.add_child(texto)
-	_panel_fin_mano.reset_size()
-	_panel_fin_mano.position = _centro_baza() - _panel_fin_mano.get_combined_minimum_size() / 2.0
-	_panel_fin_mano.show()
+	if _mus:
+		_mus.mostrar_fin_de_mano(ultima)
 
 func _pos_pila() -> Vector2:
 	return _centro_baza() + DESPLAZAMIENTO_PILA
@@ -1052,7 +908,11 @@ func _recolocar_mesa() -> void:
 	if not _modo_mesa_completa():
 		return
 	for peer in etiquetas_jugador:
-		etiquetas_jugador[peer].position = _pos_etiqueta(_posicion_relativa(peer))
+		var etiqueta: PanelContainer = etiquetas_jugador[peer]
+		var pos := _pos_etiqueta(_posicion_relativa(peer))
+		# Con nombre, la etiqueta es más ancha: que no se salga por la derecha.
+		pos.x = minf(pos.x, _tam().x - etiqueta.get_combined_minimum_size().x - 10.0)
+		etiqueta.position = pos
 	for peer in dorsos:
 		_dibujar_dorsos(peer)
 	_colocar_pinta()
@@ -1063,10 +923,10 @@ func _recolocar_mesa() -> void:
 		carta_en_mesa.pos_base = global_position + _pos_carta_baza(0) - carta_en_mesa.get_parent().global_position
 		carta_en_mesa.position = carta_en_mesa.pos_base
 	boton_cantar.position = Vector2(_tam().x / 2.0 + 350.0, _tam().y - 180.0)
-	if not _pila_actual.is_empty():
+	if _con_mazo and not _pila_actual.is_empty():
 		_dibujar_pila(_pila_actual[0], _pila_actual[1])
 	_colocar_acciones()
-	_colocar_textos_mus()
+	_colocar_textos()
 	reorganizar_mano()
 
 # --- Piezas de la mesa de 4 ---
@@ -1121,7 +981,7 @@ func _crear_etiqueta_jugador(peer_id: int) -> void:
 	panel.set_meta("normal", normal)
 	panel.set_meta("activo", activo)
 	var texto := _crear_texto(22)
-	texto.text = _abreviatura(peer_id)
+	texto.text = _etiqueta_de(peer_id)
 	panel.add_child(texto)
 	add_child(panel)
 	etiquetas_jugador[peer_id] = panel
@@ -1251,7 +1111,7 @@ func _depurar(texto: String) -> void:
 
 # --- Utilidades ---
 
-## El nodo que lleva la partida (Juego_Guinote, Juego_Tute...), hermano de la mesa.
+## El nodo que lleva la partida (Juego_Motor, o Juego_Guinote en la escena de Javi), hermano de la mesa.
 func _controlador() -> Node:
 	for hermano in get_parent().get_children():
 		if hermano is Controlador_juego_Base:
@@ -1273,10 +1133,16 @@ func _posicion_relativa(peer_id: int) -> int:
 		return 2
 	return relativa
 
-## "Jugador 3" -> "J3".
+## "J3" para el tercer asiento: el número dice el asiento y la pareja.
 func _abreviatura(peer_id: int) -> String:
-	var nombre: String = nombres_por_peer.get(peer_id, "?")
-	return "J" + nombre.get_slice(" ", nombre.get_slice_count(" ") - 1)
+	return "J%d" % (asientos.find(peer_id) + 1)
+
+## La etiqueta del asiento: "J3", o "J3 · Lorenzo" si eligió nombre.
+func _etiqueta_de(peer_id: int) -> String:
+	var nombre: String = nombres_por_peer.get(peer_id, "")
+	if nombre == "" or nombre.begins_with("Jugador "):
+		return _abreviatura(peer_id)
+	return "%s · %s" % [_abreviatura(peer_id), nombre]
 
 func _palo_de(id_carta: String) -> String:
 	var partes := id_carta.split("_")
