@@ -79,6 +79,11 @@ func _actualizar_mano(mi_mano: Array) -> void:
 		carta.inicializar(id)
 		carta.bloqueada = not _ids_jugables.has(id)
 		carta.carta_soltada.connect(_on_carta_soltada)
+		# _actualizar_mano() recrea toda la mano en cada estado_actualizado (más
+		# simple que diferenciar qué carta es nueva); sin este fundido aparecían
+		# todas de golpe en cada turno, incluidas las que ya estaban en la mano.
+		carta.modulate.a = 0.0
+		create_tween().tween_property(carta, "modulate:a", 1.0, 0.25)
 		cartas_en_mano.append(carta)
 	reorganizar_mano()
 
@@ -106,6 +111,13 @@ func _actualizar_mesa(baza_actual: Array, tu_posicion: int) -> void:
 		carta.rot_base = 0.0
 		if carta.tween_actual:
 			carta.tween_actual.kill()
+		# Pequeño "golpe" al caer la carta sobre la mesa en vez de aparecer de
+		# golpe a tamaño completo, para que se note que se acaba de jugar.
+		carta.modulate.a = 0.0
+		carta.scale = Vector2(0.85, 0.85)
+		var tween_entrada := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween_entrada.tween_property(carta, "scale", Vector2.ONE, 0.2)
+		tween_entrada.parallel().tween_property(carta, "modulate:a", 1.0, 0.15)
 		if es_mia:
 			_carta_en_mesa = carta
 		else:

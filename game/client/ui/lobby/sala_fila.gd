@@ -56,7 +56,13 @@ func _on_boton_unirse_pressed() -> void:
 		unirse_pulsado.emit(sala_id, "")
 		return
 	var dialogo := ESCENA_PEDIR_PASSWORD.instantiate()
-	add_child(dialogo)
+	# SalaFila es un HBoxContainer (una fila de la lista): si el diálogo se
+	# añadiera aquí, el contenedor lo trataría como un hijo más de su layout y
+	# lo encogería/colocaría dentro de la fila en vez de superponerlo a pantalla
+	# completa (igual que lobby.gd añade el diálogo de "crear sala" a sí mismo,
+	# que sí es la pantalla entera). Se añade a la escena raíz para que ocupe
+	# toda la pantalla y quede centrado.
+	get_tree().current_scene.add_child(dialogo)
 	dialogo.confirmada.connect(func(password: String) -> void:
 		dialogo.queue_free()
 		unirse_pulsado.emit(sala_id, password))
