@@ -178,6 +178,11 @@ func reorganizar_mano() -> void:
 func _on_carta_soltada(carta_soltada: Variant) -> void:
 	if _cartas_sobre_area_mesa.has(carta_soltada):
 		if _carta_en_mesa == null and not carta_soltada.bloqueada:
+			# Al jugarla queda fuera de cartas_en_mano, así que _actualizar_mano()
+			# ya no la recorre para liberarla cuando llegue el siguiente estado
+			# (mi_mano sin esta carta): sin este queue_free() se queda huérfana,
+			# visible sobre la mano y sin poder usarse (bug reportado en #34).
+			carta_soltada.queue_free()
 			cartas_en_mano.erase(carta_soltada)
 			jugar_carta_solicitada.emit(carta_soltada.id)
 		reorganizar_mano()

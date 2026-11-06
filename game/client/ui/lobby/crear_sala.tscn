@@ -6,6 +6,8 @@
 [ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_hover.tres" id="4_boton_h"]
 [ext_resource type="StyleBox" path="res://client/ui/theme/boton_dorado_pressed.tres" id="5_boton_p"]
 [ext_resource type="Font" path="res://client/ui/theme/fuente_titulo_bold.tres" id="6_fuente_bold"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/campo_texto_normal.tres" id="7_campo_n"]
+[ext_resource type="StyleBox" path="res://client/ui/theme/campo_texto_focus.tres" id="8_campo_f"]
 
 [node name="CrearSala" type="Control"]
 layout_mode = 3
@@ -83,6 +85,12 @@ text = "Nombre de la sala (opcional)"
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("7_campo_n")
+theme_override_styles/focus = ExtResource("8_campo_f")
 placeholder_text = "Sala de Guiñote"
 max_length = 40
 
@@ -96,6 +104,13 @@ text = "Contraseña (opcional)"
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(0, 40)
+theme_override_colors/font_color = Color(0.106, 0.086, 0.071, 1)
+theme_override_colors/font_placeholder_color = Color(0.106, 0.086, 0.071, 0.45)
+theme_override_colors/caret_color = Color(0.643, 0.11, 0.122, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = ExtResource("7_campo_n")
+theme_override_styles/focus = ExtResource("8_campo_f")
+placeholder_text = "Contraseña (opcional)"
 secret = true
 
 [node name="Botones" type="HBoxContainer" parent="Centro/PanelCartulina/Contenido"]

@@ -10,6 +10,13 @@ extends Control
 const ESCENA_LOBBY := "res://client/ui/lobby/lobby.tscn"
 const AccionesGuinote := preload("res://client/ui/partida/acciones_guinote.gd")
 
+## Tiempo que se deja la baza completa (las dos cartas) a la vista antes de
+## redibujar el siguiente estado (que ya trae la baza vacía/el robo hecho):
+## sin esto, al jugar la segunda carta el servidor resuelve la baza y manda el
+## siguiente `estado_partida` tan rápido que el rival no llega a ver qué carta
+## se ha echado.
+const COOLDOWN_BAZA_COMPLETA := 1.2
+
 @onready var etiqueta_fase: Label = %EtiquetaFase
 @onready var etiqueta_tanteo: Label = %EtiquetaTanteo
 @onready var etiqueta_cantes: Label = %EtiquetaCantes
@@ -22,6 +29,10 @@ const AccionesGuinote := preload("res://client/ui/partida/acciones_guinote.gd")
 
 ## Inyectable en tests (doble), igual que en partida.gd.
 var red = ClienteRed
+
+var _ultimo_estado_renderizado: Dictionary = {}
+var _en_cooldown_baza := false
+var _estado_mas_reciente: Dictionary = {}
 
 
 func _ready() -> void:
@@ -39,6 +50,18 @@ func _ready() -> void:
 
 func _renderizar_estado(estado: Dictionary) -> void:
 	etiqueta_error.visible = false
+	_estado_mas_reciente = estado
+	if _en_cooldown_baza:
+		return
+	var baza_anterior: Array = _ultimo_estado_renderizado.get("baza_actual", [])
+	var baza_nueva: Array = estado.get("baza_actual", [])
+	if baza_anterior.size() >= 2 and baza_nueva.size() < baza_anterior.size():
+		_en_cooldown_baza = true
+		await get_tree().create_timer(COOLDOWN_BAZA_COMPLETA).timeout
+		_en_cooldown_baza = false
+		_renderizar_estado(_estado_mas_reciente)
+		return
+	_ultimo_estado_renderizado = estado
 	_renderizar_info(estado)
 	_renderizar_acciones(estado.get("jugadas_validas", []))
 	tapete.actualizar(estado, red.config.get("tu_posicion", -1))
