@@ -76,15 +76,22 @@ unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
-anchor_top = 0.7
+anchor_top = 0.665
 anchor_right = 0.5
-anchor_bottom = 0.7
+anchor_bottom = 0.665
 offset_left = -260.0
 offset_top = -40.0
 offset_right = 260.0
 offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
+# Mano empieza en anchor_top=0.7 (tapete_guinote.tscn) y las cartas se dibujan
+# con z_index >= 0 (carta_guinote.gd), que en Godot se compara de forma
+# absoluta en toda la capa de lienzo —no solo entre hermanos—, así que un
+# botón sin z_index propio puede quedar tapado por el abanico de cartas pese
+# a estar más arriba en el árbol. Se sube el panel para no solaparse con la
+# mano y, además, se le da un z_index alto como red de seguridad.
+z_index = 50
 alignment = 1
 theme_override_constants/separation = 10
 

@@ -46,6 +46,13 @@ func _centrar_zonas() -> void:
 	colision_mano.position = nodo_mano.size / 2.0
 	colision_mesa.position = nodo_mesa.size / 2.0
 	colision_mazo.position = nodo_mazo.size / 2.0
+	# El tamaño fijo original (160x120, heredado de game_javivi) deja un área de
+	# soltado mucho más pequeña que la zona "Mesa" que se ve en pantalla —al ser
+	# "Mesa" un control anclado y responsivo, su tamaño real varía con la
+	# ventana—, así que cuesta atinar al soltar la carta. Usar el tamaño real
+	# del control como área de colisión hace que toda la zona visible de la
+	# mesa admita soltar la carta.
+	colision_mesa.shape.size = nodo_mesa.size
 
 
 func actualizar(estado: Dictionary, tu_posicion: int) -> void:
@@ -72,6 +79,11 @@ func _actualizar_mano(mi_mano: Array) -> void:
 		carta.inicializar(id)
 		carta.bloqueada = not _ids_jugables.has(id)
 		carta.carta_soltada.connect(_on_carta_soltada)
+		# _actualizar_mano() recrea toda la mano en cada estado_actualizado (más
+		# simple que diferenciar qué carta es nueva); sin este fundido aparecían
+		# todas de golpe en cada turno, incluidas las que ya estaban en la mano.
+		carta.modulate.a = 0.0
+		create_tween().tween_property(carta, "modulate:a", 1.0, 0.25)
 		cartas_en_mano.append(carta)
 	reorganizar_mano()
 
@@ -99,6 +111,13 @@ func _actualizar_mesa(baza_actual: Array, tu_posicion: int) -> void:
 		carta.rot_base = 0.0
 		if carta.tween_actual:
 			carta.tween_actual.kill()
+		# Pequeño "golpe" al caer la carta sobre la mesa en vez de aparecer de
+		# golpe a tamaño completo, para que se note que se acaba de jugar.
+		carta.modulate.a = 0.0
+		carta.scale = Vector2(0.85, 0.85)
+		var tween_entrada := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween_entrada.tween_property(carta, "scale", Vector2.ONE, 0.2)
+		tween_entrada.parallel().tween_property(carta, "modulate:a", 1.0, 0.15)
 		if es_mia:
 			_carta_en_mesa = carta
 		else:
@@ -171,6 +190,11 @@ func reorganizar_mano() -> void:
 func _on_carta_soltada(carta_soltada: Variant) -> void:
 	if _cartas_sobre_area_mesa.has(carta_soltada):
 		if _carta_en_mesa == null and not carta_soltada.bloqueada:
+			# Al jugarla queda fuera de cartas_en_mano, así que _actualizar_mano()
+			# ya no la recorre para liberarla cuando llegue el siguiente estado
+			# (mi_mano sin esta carta): sin este queue_free() se queda huérfana,
+			# visible sobre la mano y sin poder usarse (bug reportado en #34).
+			carta_soltada.queue_free()
 			cartas_en_mano.erase(carta_soltada)
 			jugar_carta_solicitada.emit(carta_soltada.id)
 		reorganizar_mano()
