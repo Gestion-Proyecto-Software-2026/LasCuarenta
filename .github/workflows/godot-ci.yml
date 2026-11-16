@@ -18,7 +18,17 @@ jobs:
           version: 4.7.2
           # Godot estándar, sin .NET: el proyecto es solo GDScript.
           use-dotnet: false
+      # Sin importar antes no existe la caché de clases ni de imágenes (.godot/
+      # no está en el repo): los scripts con class_name no cargan, GUT no
+      # ejecuta ningún test y aun así terminaba "en verde".
+      - name: Importar el proyecto
+        working-directory: game
+        run: godot --headless --path . --import
       # Requiere tener el addon GUT instalado en game/addons/gut
       - name: Run GUT tests (headless)
         working-directory: game
-        run: godot --headless --path . -s addons/gut/gut_cmdln.gd
+        shell: bash
+        run: |
+          godot --headless --path . -s addons/gut/gut_cmdln.gd | tee gut.log
+          # Si no se ha ejecutado ningún test, que falle en vez de dar por bueno.
+          grep -q "Passing Tests" gut.log

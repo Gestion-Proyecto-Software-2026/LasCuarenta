@@ -154,13 +154,38 @@ describe("lobbyService.crearSala", () => {
     expect(insertSala[1][4]).not.toBe("a".repeat(64));
   });
 
-  it("rechaza juegos que todavía no se pueden crear, sin abrir transacción", async () => {
+  it("rechaza juegos que no existen, sin abrir transacción", async () => {
     await expect(
-      lobbyService.crearSala({ juego: "tute" }, USUARIO_ID),
+      lobbyService.crearSala({ juego: "parchis" }, USUARIO_ID),
     ).rejects.toMatchObject({
       status: 400,
     });
     expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("crea una sala de Tute a 2 o a 4 jugadores", async () => {
+    for (const capacidad of [2, 4]) {
+      prepararCliente({
+        "INSERT INTO salas": [
+          {
+            id: SALA_ID,
+            juego: "tute",
+            estado: "esperando",
+            capacidad,
+            nombre: "Sala de Tute",
+          },
+        ],
+      });
+      const sala = await lobbyService.crearSala(
+        { juego: "tute", capacidad, nombre: "Sala de Tute" },
+        USUARIO_ID,
+      );
+      expect(sala.juego).toBe("tute");
+      expect(sala.capacidad).toBe(capacidad);
+      const insertSala = cliente.query.mock.calls[1];
+      expect(insertSala[1][0]).toBe("tute");
+      expect(insertSala[1][1]).toBe(capacidad);
+    }
   });
 
   it("rechaza una capacidad no admitida para el juego, sin abrir transacción", async () => {

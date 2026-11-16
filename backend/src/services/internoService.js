@@ -23,7 +23,11 @@ async function obtenerSala(salaId) {
   if (!sala) throw new ErrorHttp(404, "la sala no existe");
 
   const { rows: participantes } = await pool.query(
-    "SELECT usuario_id, posicion FROM sala_participantes WHERE sala_id = $1 ORDER BY posicion",
+    `SELECT p.usuario_id, p.posicion, u.nombre_visible
+       FROM sala_participantes p
+       JOIN usuarios u ON u.id = p.usuario_id
+      WHERE p.sala_id = $1
+      ORDER BY p.posicion`,
     [salaId],
   );
 
@@ -33,6 +37,8 @@ async function obtenerSala(salaId) {
       usuario_id: p.usuario_id,
       posicion: p.posicion,
       equipo: equipoDe(p.posicion),
+      // Para que el servidor de partida rotule la mesa con el nombre de cada uno.
+      nombre_visible: p.nombre_visible,
     })),
   };
 }

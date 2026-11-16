@@ -75,16 +75,12 @@ func test_el_boton_salir_esta_visible_desde_el_principio() -> void:
 	assert_true(_boton("BotonVolver").visible)
 
 
-func test_elige_la_pantalla_de_2_jugadores_si_la_sala_tiene_2() -> void:
-	var escena: String = espera._escena_para({"jugadores": [{}, {}]})
-
-	assert_eq(escena, "res://client/ui/partida_guinote_2p/partida_guinote_2p.tscn")
-
-
-func test_elige_la_pantalla_de_4_jugadores_si_la_sala_tiene_4() -> void:
-	var escena: String = espera._escena_para({"jugadores": [{}, {}, {}, {}]})
-
-	assert_eq(escena, "res://client/ui/partida/partida.tscn")
+func test_todos_los_juegos_y_modos_van_a_la_mesa_comun() -> void:
+	# PBI-12: una sola pantalla de partida para Guiñote, Tute y Mus, a 2 y a 4.
+	for juego: String in ["guinote", "tute", "mus"]:
+		for jugadores: Array in [[{}, {}], [{}, {}, {}, {}]]:
+			var escena: String = espera._escena_para({"juego": juego, "jugadores": jugadores})
+			assert_eq(escena, "res://client/ui/mesa/partida_mesa.tscn", "%s a %d" % [juego, jugadores.size()])
 
 
 func test_salir_abandona_la_sala_por_HTTP_y_desconecta_de_ENet() -> void:

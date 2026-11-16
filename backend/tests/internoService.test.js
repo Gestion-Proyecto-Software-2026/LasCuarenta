@@ -38,8 +38,8 @@ describe("internoService.obtenerSala", () => {
       })
       .mockResolvedValueOnce({
         rows: [
-          { usuario_id: USUARIO_ID, posicion: 0 },
-          { usuario_id: "otro", posicion: 1 },
+          { usuario_id: USUARIO_ID, posicion: 0, nombre_visible: "Ana" },
+          { usuario_id: "otro", posicion: 1, nombre_visible: "Luis" },
         ],
       });
 
@@ -51,8 +51,13 @@ describe("internoService.obtenerSala", () => {
       estado: "esperando",
       capacidad: 4,
       participantes: [
-        { usuario_id: USUARIO_ID, posicion: 0, equipo: 0 },
-        { usuario_id: "otro", posicion: 1, equipo: 1 },
+        {
+          usuario_id: USUARIO_ID,
+          posicion: 0,
+          equipo: 0,
+          nombre_visible: "Ana",
+        },
+        { usuario_id: "otro", posicion: 1, equipo: 1, nombre_visible: "Luis" },
       ],
     });
   });
