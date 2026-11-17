@@ -19,6 +19,19 @@ var nombre_en_posicion: Dictionary = {}  # posicion -> nombre visible del usuari
 ## RoomManager._jugada_publica); {} hasta que alguien juega.
 var ultima_jugada: Dictionary = {}
 
+## Tiempo límite (PBI-14): posicion -> instante (ms del reloj de RoomManager) en
+## que se le acaba el tiempo para decidir. Solo están los jugadores esperados.
+var limite_de: Dictionary = {}
+## Cuántas veces seguidas se le ha acabado el tiempo a cada jugador (posicion ->
+## n); se borra cuando juega él. Con RoomManager.TIEMPOS_AGOTADOS_PARA_AUSENTE
+## o más, está ausente.
+var agotados_seguidos: Dictionary = {}
+
+
+## Si se le ha acabado el tiempo tantas veces seguidas que se le da por ido.
+func es_ausente(posicion: int) -> bool:
+	return agotados_seguidos.get(posicion, 0) >= RoomManager.TIEMPOS_AGOTADOS_PARA_AUSENTE
+
 
 func empezada() -> bool:
 	return estado != null

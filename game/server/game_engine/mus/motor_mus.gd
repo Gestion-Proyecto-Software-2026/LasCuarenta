@@ -562,3 +562,13 @@ func explicar_rechazo(estado: EstadoPartida, jugador_id: int, jugada: Dictionary
 					return "Ante un órdago solo se puede querer o no querer."
 				return "El envite tiene que ser de %d a %d piedras." % [ENVITE_MINIMO, ENVITE_MAXIMO]
 	return ""
+
+## Si a alguien se le acaba el tiempo (PBI-14) se juega lo más prudente: cortar
+## el mus, pasar o no querer. En el descarte, la primera opción.
+func jugada_por_tiempo(estado: EstadoPartida, jugador_id: int) -> Dictionary:
+	var validas := jugadas_validas(estado, jugador_id)
+	for tipo: String in [MensajesRed.NO_MUS, MensajesRed.PASAR, MensajesRed.NO_QUIERO]:
+		for jugada: Dictionary in validas:
+			if jugada["tipo"] == tipo:
+				return jugada
+	return {} if validas.is_empty() else validas[0]
