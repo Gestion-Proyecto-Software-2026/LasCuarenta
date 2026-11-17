@@ -347,7 +347,10 @@ paths:
     post:
       tags: [Lobby]
       summary: Expulsa a un jugador de la sala (solo el creador)
-      description: "⚠️ Pendiente de implementar (responde 501). PBI-09."
+      description: >
+        PBI-09. Saca a `usuario_id` de la sala y deja su plaza libre. Solo el
+        creador y solo con la sala `esperando`. El backend no avisa al servidor de
+        partida: el cliente del creador le envía `actualizar_sala` por ENet.
       security:
         - bearerAuth: []
       parameters:
@@ -366,6 +369,28 @@ paths:
       responses:
         "200":
           description: Jugador expulsado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  capacidad:
+                    type: integer
+                  jugadores_actuales:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          description: Sin token o token inválido
+        "403":
+          description: Quien llama no es el creador de la sala
+        "404":
+          description: La sala no existe o ese jugador no está en ella
+        "409":
+          description: La partida ya ha empezado
 
   /usuarios/{id}/historial:
     get:
@@ -442,6 +467,27 @@ paths:
           description: X-Internal-Secret ausente o incorrecto
         "404":
           description: La sala no existe
+
+  /interno/salas/{id}/iniciar:
+    post:
+      tags: [Interno]
+      summary: Marca la sala como en curso (solo el servidor de partida)
+      description: >
+        PBI-09. Lo llama el servidor de partida cuando el creador empieza la
+        partida. Idempotente: si ya estaba `en_curso` también responde 204.
+      security:
+        - internalSecret: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      responses:
+        "204":
+          description: Sala en curso
+        "401":
+          description: X-Internal-Secret ausente o incorrecto
+        "404":
+          description: La sala no existe
+        "409":
+          description: La sala ya ha terminado
 
   /interno/partidas:
     post:

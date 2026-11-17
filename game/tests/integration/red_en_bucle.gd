@@ -8,6 +8,7 @@ extends Node
 signal conectado
 signal fallo_conexion
 signal desconectado_del_servidor
+signal sala_actualizada(sala: Dictionary)
 signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
@@ -16,6 +17,7 @@ signal error_recibido(mensaje: String)
 var sala_id := ""
 var servidor_direccion := "bucle"
 var config: Dictionary = {}
+var sala: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
 
@@ -36,6 +38,14 @@ func unirse_partida(usuario_id: String, token: String) -> void:
 	enviar(MensajesRed.UNIRSE_PARTIDA, {"usuario_id": usuario_id, "token": token, "sala_id": sala_id})
 
 
+func empezar_partida() -> void:
+	enviar(MensajesRed.EMPEZAR_PARTIDA)
+
+
+func actualizar_sala() -> void:
+	enviar(MensajesRed.ACTUALIZAR_SALA)
+
+
 func enviar(tipo: String, payload: Dictionary = {}) -> void:
 	servidor.recibir(peer, MensajesRed.crear(tipo, payload))
 
@@ -50,6 +60,9 @@ func _on_mensaje_para(para: int, mensaje: Dictionary) -> void:
 		return
 	var payload: Dictionary = mensaje.get("payload", {})
 	match mensaje.get("tipo"):
+		MensajesRed.SALA_ACTUALIZADA:
+			sala = payload
+			sala_actualizada.emit(sala)
 		MensajesRed.PARTIDA_INICIADA:
 			config = payload.get("config", {})
 			partida_iniciada.emit(config)

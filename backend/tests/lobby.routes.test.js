@@ -3,6 +3,7 @@ jest.mock("../src/services/lobbyService", () => ({
   crearSala: jest.fn(),
   unirseSala: jest.fn(),
   salirSala: jest.fn(),
+  expulsarJugador: jest.fn(),
 }));
 
 const request = require("supertest");
@@ -182,11 +183,48 @@ describe("DELETE /api/salas/:id/unirse", () => {
 });
 
 describe("POST /api/salas/:id/expulsar", () => {
-  it("sigue en 501 hasta PBI-09", async () => {
+  const EXPULSADO = "33333333-3333-4333-8333-333333333333";
+
+  it("401 sin token", async () => {
     const res = await request(app)
       .post(`/api/salas/${SALA_ID}/expulsar`)
-      .set("Authorization", `Bearer ${token}`);
+      .send({ usuario_id: EXPULSADO });
 
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
+    expect(lobbyService.expulsarJugador).not.toHaveBeenCalled();
+  });
+
+  it("200 y pasa sala, usuario autenticado y expulsado al servicio", async () => {
+    const sala = { id: SALA_ID, capacidad: 2, jugadores_actuales: 1 };
+    lobbyService.expulsarJugador.mockResolvedValue(sala);
+
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/expulsar`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ usuario_id: EXPULSADO });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(sala);
+    expect(lobbyService.expulsarJugador).toHaveBeenCalledWith(
+      SALA_ID,
+      "u1",
+      EXPULSADO,
+    );
+  });
+
+  it("403 si el servicio rechaza porque no es el creador", async () => {
+    lobbyService.expulsarJugador.mockRejectedValue(
+      new ErrorHttp(403, "solo el creador de la sala puede expulsar"),
+    );
+
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/expulsar`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ usuario_id: EXPULSADO });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({
+      error: "solo el creador de la sala puede expulsar",
+    });
   });
 });

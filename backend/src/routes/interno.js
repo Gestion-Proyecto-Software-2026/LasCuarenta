@@ -23,6 +23,16 @@ router.get("/salas/:id", async (req, res, next) => {
   }
 });
 
+// POST /api/interno/salas/:id/iniciar — la partida ha empezado (PBI-09)
+router.post("/salas/:id/iniciar", async (req, res, next) => {
+  try {
+    await internoService.iniciarSala(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    manejarError(err, res, next);
+  }
+});
+
 // POST /api/interno/partidas — solo lo llama el servidor de partida
 router.post("/partidas", async (req, res, next) => {
   try {

@@ -7,6 +7,7 @@ var salas: Dictionary = {}
 var asincrono := false
 var consultas_de_sala := 0
 var partidas_registradas: Array[Dictionary] = []
+var salas_iniciadas: Array[String] = []
 
 
 func obtener_sala(sala_id: String) -> Dictionary:
@@ -16,6 +17,11 @@ func obtener_sala(sala_id: String) -> Dictionary:
 	if not salas.has(sala_id):
 		return {"ok": false, "codigo": 404, "datos": {"error": "sala no encontrada"}}
 	return {"ok": true, "codigo": 200, "datos": salas[sala_id]}
+
+
+func iniciar_sala(sala_id: String) -> Dictionary:
+	salas_iniciadas.append(sala_id)
+	return {"ok": true, "codigo": 204, "datos": null}
 
 
 func registrar_partida(datos: Dictionary) -> Dictionary:

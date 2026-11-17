@@ -7,6 +7,8 @@ extends RefCounted
 var sala_id: String
 var juego: String
 var capacidad: int
+## Quien puede expulsar y empezar la partida (PBI-09); "" si el backend no lo dice.
+var creador_id: String = ""
 var motor: MotorDeJuego
 ## null hasta que se conectan todos los jugadores y empieza la partida.
 var estado: EstadoPartida = null
@@ -33,6 +35,22 @@ func posicion_de_peer(peer_id: int) -> int:
 		if peer_en_posicion[posicion] == peer_id:
 			return posicion
 	return -1
+
+
+## Lo que ve cada jugador en la sala de espera antes de empezar (payload de
+## [code]sala_actualizada[/code]): solo los asientos ocupados, ordenados.
+func vista_espera() -> Dictionary:
+	var lista: Array[Dictionary] = []
+	for posicion in range(capacidad):
+		if not usuario_en_posicion.has(posicion):
+			continue
+		lista.append({
+			"usuario_id": usuario_en_posicion[posicion],
+			"nombre": nombre_en_posicion.get(posicion, ""),
+			"posicion": posicion,
+			"conectado": peer_en_posicion.has(posicion),
+		})
+	return {"creador_id": creador_id, "capacidad": capacidad, "jugadores": lista}
 
 
 ## Como [method jugadores], con el nombre visible de cada uno: lo que recibe el

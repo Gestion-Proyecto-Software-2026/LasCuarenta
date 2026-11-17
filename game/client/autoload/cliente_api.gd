@@ -86,6 +86,12 @@ func salir_sala(sala_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/unirse" % sala_id.uri_encode())
 
 
+## Solo el creador de la sala, antes de empezar la partida (PBI-09).
+func expulsar_jugador(sala_id: String, usuario_id: String) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/expulsar" % sala_id.uri_encode(),
+		{"usuario_id": usuario_id})
+
+
 func _hash_password(password: String) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)

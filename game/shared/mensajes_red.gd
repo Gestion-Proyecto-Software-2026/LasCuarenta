@@ -22,8 +22,15 @@ const ORDAGO := "ordago"
 const QUIERO := "quiero"
 const NO_QUIERO := "no_quiero"
 const CHAT_ENVIAR := "chat_enviar"
+## Sala de espera (PBI-09): el creador arranca la partida cuando están todos.
+const EMPEZAR_PARTIDA := "empezar_partida"
+## Sala de espera: pide al servidor que vuelva a leer la sala del backend
+## (p. ej. tras expulsar a alguien por REST).
+const ACTUALIZAR_SALA := "actualizar_sala"
 
 # Servidor → cliente
+## Quién está sentado en la sala de espera y quién es el creador (PBI-09).
+const SALA_ACTUALIZADA := "sala_actualizada"
 const PARTIDA_INICIADA := "partida_iniciada"
 const ESTADO_PARTIDA := "estado_partida"
 const PARTIDA_TERMINADA := "partida_terminada"

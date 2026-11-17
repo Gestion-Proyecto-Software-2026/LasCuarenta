@@ -58,8 +58,17 @@ router.delete("/:id/unirse", async (req, res, next) => {
 });
 
 // POST /api/salas/:id/expulsar — PBI-09, solo el creador de la sala
-router.post("/:id/expulsar", (req, res) => {
-  res.status(501).json({ error: "no implementado" });
+router.post("/:id/expulsar", async (req, res, next) => {
+  try {
+    const sala = await lobbyService.expulsarJugador(
+      req.params.id,
+      req.usuario.id,
+      (req.body || {}).usuario_id,
+    );
+    res.status(200).json(sala);
+  } catch (err) {
+    manejarError(err, res, next);
+  }
 });
 
 module.exports = router;

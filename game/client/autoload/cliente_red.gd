@@ -9,6 +9,8 @@ extends Node
 signal conectado
 signal fallo_conexion
 signal desconectado_del_servidor
+## Sala de espera (PBI-09): quién está sentado y quién es el creador.
+signal sala_actualizada(sala: Dictionary)
 signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
@@ -22,6 +24,8 @@ var servidor_direccion: String = ""
 ## Último `partida_iniciada.config` y `estado_partida` recibidos (se limpian al
 ## desconectar). `resultado` es el último `partida_terminada.resultado`.
 var config: Dictionary = {}
+## Último `sala_actualizada` (lista de la sala de espera).
+var sala: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
 
@@ -51,6 +55,7 @@ func conectar_al_servidor() -> void:
 		return
 
 	config = {}
+	sala = {}
 	ultimo_estado = {}
 	resultado = {}
 	_peer = ENetMultiplayerPeer.new()
@@ -78,12 +83,23 @@ func desconectar() -> void:
 	multiplayer.multiplayer_peer = null
 	_peer = null
 	config = {}
+	sala = {}
 	ultimo_estado = {}
 	resultado = {}
 
 
 func unirse_partida(usuario_id: String, token: String) -> void:
 	enviar(MensajesRed.UNIRSE_PARTIDA, {"usuario_id": usuario_id, "token": token, "sala_id": sala_id})
+
+
+## Solo lo atiende el servidor si lo pide el creador con la sala completa.
+func empezar_partida() -> void:
+	enviar(MensajesRed.EMPEZAR_PARTIDA)
+
+
+## Pide al servidor que relea la sala del backend (tras expulsar a alguien).
+func actualizar_sala() -> void:
+	enviar(MensajesRed.ACTUALIZAR_SALA)
 
 
 ## Envía una jugada al servidor; `payload` es el resto de campos del mensaje
@@ -109,6 +125,9 @@ func _on_mensaje(peer_id: int, mensaje: Dictionary) -> void:
 		return  # Solo el servidor; ver shared/canal_red.gd.
 	var payload: Dictionary = mensaje.get("payload", {})
 	match mensaje.get("tipo"):
+		MensajesRed.SALA_ACTUALIZADA:
+			sala = payload
+			sala_actualizada.emit(sala)
 		MensajesRed.PARTIDA_INICIADA:
 			config = payload.get("config", {})
 			partida_iniciada.emit(config)

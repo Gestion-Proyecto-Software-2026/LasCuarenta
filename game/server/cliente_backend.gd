@@ -23,6 +23,11 @@ func obtener_sala(sala_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_GET, "/interno/salas/%s" % sala_id.uri_encode())
 
 
+## Avisa de que la partida ha empezado: la sala pasa a [code]en_curso[/code].
+func iniciar_sala(sala_id: String) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_POST, "/interno/salas/%s/iniciar" % sala_id.uri_encode())
+
+
 func registrar_partida(datos: Dictionary) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_POST, "/interno/partidas", datos)
 

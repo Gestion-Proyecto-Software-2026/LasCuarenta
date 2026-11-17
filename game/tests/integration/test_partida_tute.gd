@@ -27,7 +27,7 @@ func _preparar(capacidad: int) -> void:
 	for posicion in capacidad:
 		participantes.append({"usuario_id": _usuario(posicion), "posicion": posicion, "equipo": posicion % 2})
 	backend.salas[SALA] = {
-		"id": SALA, "juego": "tute", "estado": "esperando", "capacidad": capacidad,
+		"id": SALA, "juego": "tute", "estado": "esperando", "capacidad": capacidad, "creador_id": _usuario(0),
 		"participantes": participantes,
 	}
 	rm = RoomManager.new(backend, SECRETO, MainServer.MOTORES)
@@ -62,6 +62,7 @@ func _unir_a_todos(capacidad: int) -> void:
 			"token": JwtDePrueba.firmar({"id": _usuario(posicion)}, SECRETO),
 			"sala_id": SALA,
 		}))
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 
 
 ## Une a todos y juega hasta el final; devuelve cuántos mensajes se enviaron.

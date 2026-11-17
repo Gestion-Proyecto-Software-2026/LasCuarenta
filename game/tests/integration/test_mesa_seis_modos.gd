@@ -34,7 +34,7 @@ func _jugar(juego: String, capacidad: int) -> void:
 		participantes.append({"usuario_id": _usuario(posicion), "posicion": posicion,
 			"equipo": posicion % 2, "nombre_visible": NOMBRES[posicion]})
 	backend.salas[SALA] = {
-		"id": SALA, "juego": juego, "estado": "esperando", "capacidad": capacidad,
+		"id": SALA, "juego": juego, "estado": "esperando", "capacidad": capacidad, "creador_id": _usuario(0),
 		"participantes": participantes,
 	}
 	servidor = RoomManager.new(backend, SECRETO, MainServer.MOTORES)
@@ -49,6 +49,7 @@ func _jugar(juego: String, capacidad: int) -> void:
 		redes.append(red)
 	for posicion in capacidad:
 		redes[posicion].unirse_partida(_usuario(posicion), JwtDePrueba.firmar({"id": _usuario(posicion)}, SECRETO))
+	redes[0].enviar(MensajesRed.EMPEZAR_PARTIDA)
 	# Como en el cliente: la pantalla de partida se abre cuando llega partida_iniciada.
 	for posicion in capacidad:
 		assert_eq(redes[posicion].config.get("tu_posicion"), posicion, "todos reciben partida_iniciada")

@@ -203,7 +203,7 @@ async function salirSala(salaId, usuarioId) {
     await cliente.query("BEGIN");
 
     const { rows: salas } = await cliente.query(
-      "SELECT id, estado FROM salas WHERE id = $1 FOR UPDATE",
+      "SELECT id, estado, creador_id FROM salas WHERE id = $1 FOR UPDATE",
       [salaId],
     );
     const sala = salas[0];
@@ -226,6 +226,16 @@ async function salirSala(salaId, usuarioId) {
     );
     if (restantes[0].total === 0) {
       await cliente.query("DELETE FROM salas WHERE id = $1", [salaId]);
+    } else if (sala.creador_id === usuarioId) {
+      // Si se va el creador, la sala pasa al siguiente sentado (posición más
+      // baja): sin creador nadie podría expulsar ni empezar la partida (PBI-09).
+      await cliente.query(
+        `UPDATE salas SET creador_id = (
+           SELECT usuario_id FROM sala_participantes
+            WHERE sala_id = $1 ORDER BY posicion LIMIT 1)
+         WHERE id = $1`,
+        [salaId],
+      );
     }
 
     await cliente.query("COMMIT");
@@ -237,4 +247,69 @@ async function salirSala(salaId, usuarioId) {
   }
 }
 
-module.exports = { listarSalas, crearSala, unirseSala, salirSala };
+// POST /salas/:id/expulsar (PBI-09): el creador saca a otro jugador de una
+// sala que aún no ha empezado; su plaza queda libre para que se una otro. El
+// servidor de partida se entera al volver a consultar la sala (el backend
+// nunca le llama, ver docs/analisis_funcional_app.md §6).
+async function expulsarJugador(salaId, creadorId, usuarioId) {
+  if (typeof salaId !== "string" || !UUID_RE.test(salaId)) {
+    throw new ErrorHttp(400, "id de sala no válido");
+  }
+  if (typeof usuarioId !== "string" || !UUID_RE.test(usuarioId)) {
+    throw new ErrorHttp(400, "usuario_id no válido");
+  }
+  if (usuarioId === creadorId) {
+    throw new ErrorHttp(400, "no puedes expulsarte a ti mismo");
+  }
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+
+    const { rows: salas } = await cliente.query(
+      "SELECT id, estado, capacidad, creador_id FROM salas WHERE id = $1 FOR UPDATE",
+      [salaId],
+    );
+    const sala = salas[0];
+    if (!sala) throw new ErrorHttp(404, "la sala no existe");
+    if (sala.creador_id !== creadorId) {
+      throw new ErrorHttp(403, "solo el creador de la sala puede expulsar");
+    }
+    if (sala.estado !== "esperando") {
+      throw new ErrorHttp(409, "la partida ya ha empezado");
+    }
+
+    const { rowCount } = await cliente.query(
+      "DELETE FROM sala_participantes WHERE sala_id = $1 AND usuario_id = $2",
+      [salaId, usuarioId],
+    );
+    if (rowCount === 0) {
+      throw new ErrorHttp(404, "ese jugador no está en la sala");
+    }
+
+    const { rows: restantes } = await cliente.query(
+      "SELECT COUNT(*)::int AS total FROM sala_participantes WHERE sala_id = $1",
+      [salaId],
+    );
+    await cliente.query("COMMIT");
+
+    return {
+      id: sala.id,
+      capacidad: sala.capacidad,
+      jugadores_actuales: restantes[0].total,
+    };
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
+module.exports = {
+  listarSalas,
+  crearSala,
+  unirseSala,
+  salirSala,
+  expulsarJugador,
+};
