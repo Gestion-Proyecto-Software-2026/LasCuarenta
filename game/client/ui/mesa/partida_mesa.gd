@@ -16,6 +16,7 @@ extends Control
 const ESCENA_LOBBY := "res://client/ui/lobby/lobby.tscn"
 const ESCENA_TAPETE := preload("res://client/ui/mesa/tapete_mesa.tscn")
 const Textos := preload("res://client/ui/mesa/textos_mesa.gd")
+const CuentaAtras := preload("res://client/ui/mesa/cuenta_atras.gd")
 
 ## En el Mus, al acabar cada mano se enseñan las cartas este tiempo (por pausa_baza).
 const FACTOR_PAUSA_MANO := 2.5
@@ -31,6 +32,8 @@ var pausa_baza := 2.0
 var autojugar := false
 
 var tapete: Control
+## Tiempo límite para decidir (PBI-14): cuánto le queda a quien tiene que jugar.
+var cuenta_atras: Label
 
 var _boton_lobby: Button
 ## Lo que queda por enseñar, en orden: { "estado": … } o { "resultado": … }.
@@ -56,6 +59,7 @@ func _ready() -> void:
 	tapete.autojugar = autojugar
 	add_child(tapete)
 	tapete.jugada_solicitada.connect(_on_jugada_solicitada)
+	_crear_cuenta_atras()
 	_crear_boton_lobby()
 
 	red.estado_actualizado.connect(_on_estado_recibido)
@@ -93,6 +97,15 @@ func _ampliar_con_la_ventana() -> void:
 	ventana.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
 
 
+func _crear_cuenta_atras() -> void:
+	cuenta_atras = CuentaAtras.new()
+	cuenta_atras.name = "CuentaAtras"
+	cuenta_atras.z_index = 110
+	# Bajo la etiqueta de tu nombre, arriba a la izquierda.
+	cuenta_atras.position = Vector2(14, 84)
+	add_child(cuenta_atras)
+
+
 func _crear_boton_lobby() -> void:
 	_boton_lobby = Button.new()
 	_boton_lobby.name = "BotonVolverLobby"
@@ -108,6 +121,10 @@ func _crear_boton_lobby() -> void:
 # --- Lo que llega del servidor ---
 
 func _on_estado_recibido(estado: Dictionary) -> void:
+	# En cuanto llega, no cuando se enseña: el tiempo corre aunque la mesa aún
+	# esté mostrando la baza anterior.
+	if not _terminada:
+		cuenta_atras.actualizar(estado, _mi_asiento(), red.config.get("jugadores", []).size())
 	_cola.append({"estado": estado})
 	_procesar_cola()
 
@@ -251,6 +268,7 @@ func _on_jugada_solicitada(jugada: Dictionary) -> void:
 
 func _terminar(texto: String) -> void:
 	_terminada = true
+	cuenta_atras.parar()
 	tapete.mostrar_resultado(texto)
 	_boton_lobby.position = Vector2(tapete.get_viewport_rect().size.x - 200.0, 12.0)
 	_boton_lobby.show()

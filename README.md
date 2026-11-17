@@ -218,6 +218,7 @@ Al arrancar escribe `Servidor de partida escuchando en UDP 9000 (backend: …, j
 
 - **Otro puerto:** añadid `-- --puerto=9001` al final.
 - **Otro backend:** `BACKEND_URL` (opcional, por defecto `http://localhost:3000/api`).
+- **Tiempo límite para decidir:** `SEGUNDOS_POR_TURNO` (opcional, por defecto `45`; `0` lo desactiva). Si a un jugador se le acaba, el servidor juega por él; si le pasa 2 veces seguidas, se le da por ausente y el servidor juega por él a los 2 s hasta que vuelva a jugar.
 - La dirección que el backend entrega a los clientes (`GAME_SERVER_ADDRESS`, por defecto `localhost:9000`) debe apuntar a este proceso.
 
 ### 5.3 Cliente
@@ -253,6 +254,7 @@ Para probar con varios jugadores, abrid varias instancias del cliente: en el edi
 | `JWT_SECRET` | Sí | Mismo valor que el backend: el servidor verifica él mismo el token de `unirse_partida` |
 | `INTERNAL_API_SECRET` | Sí | Mismo valor que el backend: autentica sus llamadas a `/interno/*` |
 | `BACKEND_URL` | No | Por defecto `http://localhost:3000/api` |
+| `SEGUNDOS_POR_TURNO` | No | Tiempo límite para decidir; por defecto `45`, `0` lo desactiva |
 
 **Cliente.**
 

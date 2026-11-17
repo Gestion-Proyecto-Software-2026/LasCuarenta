@@ -718,3 +718,11 @@ static func _jugadas_a_ids(jugadas: Array) -> Array[Dictionary]:
 	for jugada: Dictionary in jugadas:
 		resultado.append({"jugador_id": jugada["jugador_id"], "carta_id": jugada["carta"].id})
 	return resultado
+
+
+## Cantar y cambiar el siete por la pinta son derechos, no obligaciones: la
+## partida no espera a nadie por ellos (PBI-14); tampoco por anunciar capote en
+## el Tute de 2. Cuando el último robo espera a que se decida el cambio, sigue
+## habiendo cuenta atrás por no_cambiar_siete.
+func tipos_de_jugada_opcionales() -> Array[String]:
+	return [MensajesRed.CANTAR, MensajesRed.CANTAR_TUTE, MensajesRed.CAMBIAR_SIETE, MensajesRed.CAPOTE]

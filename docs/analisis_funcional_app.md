@@ -169,7 +169,7 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 |---|---|---|
 | `sala_actualizada` | `{ creador_id, capacidad, jugadores: [{ usuario_id, nombre, posicion, conectado }] }` | PBI-09: antes de empezar, a todos los que esperan, cada vez que cambia la sala (alguien se sienta, se va o es expulsado) |
 | `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Cuando el creador envía `empezar_partida`, o al reconectarse uno a una partida ya empezada |
-| `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` | Tras cada acción válida |
+| `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` + `tiempos_para_decidir` | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` | Al finalizar |
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
@@ -185,6 +185,8 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 **Motivo del rechazo (PBI-12):** si el motor tiene un método `explicar_rechazo(estado, jugador_id, jugada)`, `RoomManager` manda su texto en el `error` en vez del genérico "Jugada no válida". Lo tienen el Guiñote, el Tute y el Mus.
 
 **Pantalla de partida (PBI-12):** los tres juegos, a 2 y a 4 jugadores, se juegan en la misma mesa del cliente (`game/client/ui/mesa/`): mismas cartas, etiquetas, letreros y botones. La mesa solo pinta el `estado_partida` y deja hacer lo que viene en `jugadas_validas`.
+
+**Tiempo límite para decidir (PBI-14):** cada `estado_partida` incluye `tiempos_para_decidir`, `[{ posicion, segundos, ausente }]` con lo que le queda a cada jugador del que depende que la partida avance (por defecto 45 s, variable `SEGUNDOS_POR_TURNO` del servidor; `0` lo desactiva). Cantar, cambiar el siete y anunciar capote no ponen cuenta atrás. Si a alguien se le acaba el tiempo, esté o no conectado, el servidor juega por él la jugada que elige el motor (`jugada_por_tiempo`: una carta permitida o no cambiar el siete en el Guiñote y el Tute; cortar mus, pasar o no querer en el Mus) y le avisa con un `error` "Se te ha acabado el tiempo: se ha jugado por ti.". **Modo ausente:** si se le acaba el tiempo 2 veces seguidas, se le da por ausente y el servidor juega por él a los 2 s en vez de a los 45, hasta que vuelva a jugar él (`ausente: true` en su entrada de `tiempos_para_decidir`). Así nadie se queda atascado porque otro se haya ido, y una partida con un ausente no se alarga.
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 

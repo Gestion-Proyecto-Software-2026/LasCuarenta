@@ -48,6 +48,20 @@ func explicar_rechazo(estado: EstadoPartida, jugador_id: int, jugada: Dictionary
 	return _del(estado).explicar_rechazo(estado, jugador_id, jugada)
 
 
+## Tiempo límite (PBI-14): lo decide el motor de la mesa (cantar y anunciar capote
+## no obligan a nadie, como en el Guiñote).
+func tipos_de_jugada_opcionales() -> Array[String]:
+	return _dos.tipos_de_jugada_opcionales()
+
+
+func jugadores_esperados(estado: EstadoPartida) -> Array[int]:
+	return _del(estado).jugadores_esperados(estado)
+
+
+func jugada_por_tiempo(estado: EstadoPartida, jugador_id: int) -> Dictionary:
+	return _del(estado).jugada_por_tiempo(estado, jugador_id)
+
+
 func _segun(num_jugadores: int) -> MotorGuinote:
 	return _dos if num_jugadores == 2 else _parejas
 
