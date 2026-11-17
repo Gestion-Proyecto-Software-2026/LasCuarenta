@@ -61,7 +61,7 @@ func _preparar(juego: String, motores: Dictionary, capacidad := 2, segundos := L
 		participantes.append({"usuario_id": _usuario(posicion), "posicion": posicion, "equipo": posicion % 2})
 	backend.salas[SALA] = {
 		"id": SALA, "juego": juego, "estado": "esperando", "capacidad": capacidad,
-		"participantes": participantes,
+		"creador_id": _usuario(0), "participantes": participantes,
 	}
 	rm = RoomManager.new(backend, SECRETO, motores, segundos)
 	ahora = 1000
@@ -78,6 +78,8 @@ func _preparar(juego: String, motores: Dictionary, capacidad := 2, segundos := L
 			"token": JwtDePrueba.firmar({"id": _usuario(posicion)}, SECRETO),
 			"sala_id": SALA,
 		}))
+	# Desde PBI-09 la partida la empieza el creador (posición 0).
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 
 
 static func _usuario(posicion: int) -> String:
