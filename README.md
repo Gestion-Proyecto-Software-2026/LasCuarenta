@@ -30,14 +30,15 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI | Prioridad | Estado |
 |---|---|---|
 | PBI-01 — Registro y autenticación | Alta | ✅ Backend (registro, login, recuperar y restablecer contraseña) y pantallas del cliente |
-| PBI-02 — Lobby y gestión de salas | Alta | ✅ Listar, crear y unirse a salas, en el backend y en el cliente. Solo se pueden crear salas de Guiñote |
+| PBI-02 — Lobby y gestión de salas | Alta | ✅ Listar, crear y unirse a salas, en el backend y en el cliente. Se pueden crear salas de Guiñote, Mus y Tute, a 2 o a 4 jugadores |
 | PBI-03 — Partida completa de Guiñote | Alta | ✅ Motor de reglas completo y registrado en el servidor de partida |
-| PBI-04 — Partida completa de Mus | Media | 🟡 Motor de reglas completo (2 o 4 jugadores) y registrado; falta poder crear salas de Mus y jugarlas desde el cliente |
-| PBI-05 — Partida completa de Tute | Media | ⏳ Pendiente |
+| PBI-04 — Partida completa de Mus | Media | ✅ Motor de reglas completo (2 o 4 jugadores), registrado y jugable desde el cliente en la mesa común (PBI-12) |
+| PBI-05 — Partida completa de Tute | Media | ✅ Motor de reglas (2 jugadores y 4 por parejas), registrado y jugable desde el cliente en la mesa común (PBI-12) |
 | PBI-06 — Historial y estadísticas | Media | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-07 — Ranking de jugadores | Baja | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-08 — Chat en partida | Baja | ⏳ Pendiente (el servidor responde que el chat no está disponible) |
 | PBI-09 — Moderación de salas | Baja | ⏳ Pendiente (`POST /salas/:id/expulsar` responde `501`) |
+| PBI-12 — Unificación de los tres juegos bajo un mismo estilo visual | Alta | ✅ Guiñote, Tute y Mus, 1 contra 1 y por parejas, en la misma mesa (`game/client/ui/mesa/`) contra el servidor de partida |
 
 **Todavía no se puede jugar una partida de principio a fin desde el cliente.** Los motores de Guiñote y Mus funcionan y están probados, pero faltan piezas que no pertenecen a ninguna PBI de juego:
 
@@ -117,7 +118,8 @@ La fuente es la Definición de Hecho de la Práctica 1:
 ├── game/                    proyecto Godot (abrir game/project.godot)
 │   ├── client/              solo presentación e input
 │   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales
-│   │   ├── ui/              login, registro, recuperar, lobby, tema visual
+│   │   ├── ui/              login, registro, recuperar, lobby, espera, tema visual
+│   │   │   └── mesa/        la mesa común de los tres juegos (PBI-12): tapete, cartas y pantalla de partida
 │   │   └── scenes/          carta, mesa (cada escena en su carpeta, junto a su script)
 │   ├── server/              lógica autoritativa; ningún script hereda de un nodo visual
 │   │   ├── main_server.*    punto de entrada headless, abre ENet y registra los motores
@@ -324,9 +326,9 @@ Cada juego es un motor que hereda de `MotorDeJuego` (`game/server/game_engine/`)
 
 | Juego | Jugadores | Reglas | Estado |
 |---|---|---|---|
-| **Guiñote** | 4, por parejas | §8 | Completo: reparto, 4 bazas con robo, arrastre, cantes (20 y las 40), Tute de reyes o sotas, cambio del siete, tanteo a 101 con "diez últimas" y vuelta |
+| **Guiñote** | 2 o 4 | §8 | Completo: reparto, 4 bazas con robo, arrastre, cantes (20 y las 40), Tute de reyes o sotas, cambio del siete, tanteo a 101 con "diez últimas" y vuelta |
 | **Mus** | 2 o 4 | §9 | Completo: mus y descartes, lances (Grande, Chica, Pares, Juego o Punto), envites (pasar, envidar, subir, órdago, quiero, no quiero), cobro, amarracos, juegos a 40 piedras, partida al mejor de 3 juegos |
-| **Tute** | 4, por parejas | §10 | Pendiente. Las variantes de 2 y 3 jugadores quedan fuera de alcance |
+| **Tute** | 2 o 4 | §10 | Completo. Por parejas: 10 cartas, sin mazo, hay que montar y pisar, cantes y Tute de reyes o caballos. A 2: 8 cartas con robo, cambio de la pinta por el 7 o el 2 y capote. La variante de 3 jugadores queda fuera de alcance |
 
 ⚠️ **Aviso:**
 

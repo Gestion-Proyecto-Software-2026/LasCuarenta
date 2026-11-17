@@ -196,6 +196,7 @@ func _crear_sala(sala_id: String, datos: Dictionary) -> Variant:
 			return "Participantes de la sala mal formados"
 		sala.posicion_de_usuario[usuario_id] = int(posicion)
 		sala.usuario_en_posicion[int(posicion)] = usuario_id
+		sala.nombre_en_posicion[int(posicion)] = _nombre_de(participante)
 	return sala
 
 
@@ -225,6 +226,7 @@ func _actualizar_participantes(sala: SalaActiva) -> void:
 			continue
 		sala.posicion_de_usuario[usuario_id] = pos_int
 		sala.usuario_en_posicion[pos_int] = usuario_id
+		sala.nombre_en_posicion[pos_int] = _nombre_de(participante)
 
 
 func _empezar(sala: SalaActiva) -> void:
@@ -245,16 +247,27 @@ func _jugar(peer_id: int, tipo: String, payload: Dictionary) -> void:
 
 	var jugada := {"tipo": tipo}
 	jugada.merge(payload)  # sin sobrescribir: un "tipo" dentro del payload no cuenta
-	var resultado := sala.motor.aplicar_jugada(sala.estado, sala.posicion_de_peer(peer_id), jugada)
+	var asiento := sala.posicion_de_peer(peer_id)
+	var resultado := sala.motor.aplicar_jugada(sala.estado, asiento, jugada)
 	if not resultado.ok:
-		_enviar_error(peer_id, resultado.error)
+		_enviar_error(peer_id, _motivo_del_rechazo(sala, asiento, jugada, resultado.error))
 		return
 
 	sala.estado = resultado.estado
+	sala.ultima_jugada = _jugada_publica(jugada, asiento, sala.ultima_jugada.get("numero", 0) + 1)
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_estado(sala, posicion)
 	if sala.motor.ha_terminado(sala.estado):
 		_terminar(sala)
+
+
+## El motivo concreto por el que el motor rechaza la jugada ("Tienes que
+## asistir..."), si sabe darlo; si no, el error genérico de [MotorDeJuego].
+func _motivo_del_rechazo(sala: SalaActiva, posicion: int, jugada: Dictionary, error: String) -> String:
+	if not sala.motor.has_method("explicar_rechazo"):
+		return error
+	var motivo: String = sala.motor.call("explicar_rechazo", sala.estado, posicion, jugada)
+	return motivo if not motivo.is_empty() else error
 
 
 func _terminar(sala: SalaActiva) -> void:
@@ -279,7 +292,7 @@ func _enviar_inicio(sala: SalaActiva, posicion: int) -> void:
 		"sala_id": sala.sala_id,
 		"juego": sala.juego,
 		"tu_posicion": posicion,
-		"jugadores": sala.jugadores(),
+		"jugadores": sala.jugadores_con_nombre(),
 	}})
 
 
@@ -288,7 +301,29 @@ func _enviar_inicio(sala: SalaActiva, posicion: int) -> void:
 func _enviar_estado(sala: SalaActiva, posicion: int) -> void:
 	var payload := sala.motor.vista_para_jugador(sala.estado, posicion)
 	payload["jugadas_validas"] = sala.motor.jugadas_validas(sala.estado, posicion)
+	payload["ultima_jugada"] = sala.ultima_jugada
 	_enviar(sala.peer_en_posicion[posicion], MensajesRed.ESTADO_PARTIDA, payload)
+
+
+## Nombre visible de un participante tal como lo da el backend; "" si no viene.
+static func _nombre_de(participante: Dictionary) -> String:
+	var nombre: Variant = participante.get("nombre_visible", "")
+	return nombre if nombre is String else ""
+
+
+## Lo que todos los jugadores pueden saber de una jugada aceptada, para que la
+## mesa la anuncie ("¡Las 40!", "Envido 2"...): quién, qué tipo y sus datos
+## públicos. De un descarte solo se dice cuántas cartas, nunca cuáles.
+## [param numero] cuenta las jugadas de la partida: así el cliente distingue
+## una jugada nueva de un estado repetido (p. ej. al reconectarse).
+static func _jugada_publica(jugada: Dictionary, posicion: int, numero: int) -> Dictionary:
+	var publica := {"numero": numero, "jugador_id": posicion, "tipo": jugada.get("tipo", "")}
+	for clave: String in ["carta_id", "palo", "figura", "cantidad"]:
+		if jugada.has(clave):
+			publica[clave] = jugada[clave]
+	if jugada.get("cartas") is Array:
+		publica["num_cartas"] = (jugada["cartas"] as Array).size()
+	return publica
 
 
 func _sala_del_peer(peer_id: int) -> SalaActiva:

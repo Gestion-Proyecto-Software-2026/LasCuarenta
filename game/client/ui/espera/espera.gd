@@ -5,8 +5,8 @@ extends Control
 ## de que la partida ha empezado (todos los jugadores conectados).
 
 const ESCENA_LOBBY := "res://client/ui/lobby/lobby.tscn"
-const ESCENA_PARTIDA_4 := "res://client/ui/partida/partida.tscn"
-const ESCENA_PARTIDA_2 := "res://client/ui/partida_guinote_2p/partida_guinote_2p.tscn"
+## La mesa común de los tres juegos, a 2 y a 4 jugadores (PBI-12).
+const ESCENA_PARTIDA := "res://client/ui/mesa/partida_mesa.tscn"
 
 @onready var etiqueta_estado: Label = %EtiquetaEstado
 @onready var etiqueta_error: Label = %EtiquetaError
@@ -54,13 +54,11 @@ func _on_partida_iniciada(config: Dictionary) -> void:
 	get_tree().change_scene_to_file(_escena_para(config))
 
 
-## La capacidad real de la sala es el tamaño de "jugadores" (lo rellena
-## sala.jugadores() en room_manager.gd); así no hace falta tocar el servidor
-## para que el cliente sepa a qué pantalla ir. Separado de
-## _on_partida_iniciada para poder probarlo sin disparar la navegación real.
-func _escena_para(config: Dictionary) -> String:
-	var num_jugadores: int = config.get("jugadores", []).size()
-	return ESCENA_PARTIDA_2 if num_jugadores == 2 else ESCENA_PARTIDA_4
+## Todos los juegos y modos se juegan en la misma mesa, que se adapta al juego
+## y al número de jugadores de `config`. Separado de _on_partida_iniciada para
+## poder probarlo sin disparar la navegación real.
+func _escena_para(_config: Dictionary) -> String:
+	return ESCENA_PARTIDA
 
 
 func _on_boton_volver_pressed() -> void:

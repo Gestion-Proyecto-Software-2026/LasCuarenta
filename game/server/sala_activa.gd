@@ -14,6 +14,10 @@ var estado: EstadoPartida = null
 var posicion_de_usuario: Dictionary = {}  # usuario_id -> posicion
 var usuario_en_posicion: Dictionary = {}  # posicion -> usuario_id
 var peer_en_posicion: Dictionary = {}  # posicion -> peer_id (solo asientos conectados)
+var nombre_en_posicion: Dictionary = {}  # posicion -> nombre visible del usuario ("" si no se sabe)
+## Lo que todos pueden saber de la última jugada aceptada (ver
+## RoomManager._jugada_publica); {} hasta que alguien juega.
+var ultima_jugada: Dictionary = {}
 
 
 func empezada() -> bool:
@@ -29,6 +33,15 @@ func posicion_de_peer(peer_id: int) -> int:
 		if peer_en_posicion[posicion] == peer_id:
 			return posicion
 	return -1
+
+
+## Como [method jugadores], con el nombre visible de cada uno: lo que recibe el
+## cliente en [code]partida_iniciada[/code] para rotular la mesa.
+func jugadores_con_nombre() -> Array[Dictionary]:
+	var lista := jugadores()
+	for jugador: Dictionary in lista:
+		jugador["nombre"] = nombre_en_posicion.get(jugador["posicion"], "")
+	return lista
 
 
 ## [code][{ usuario_id, posicion, equipo }][/code] ordenado por asiento.

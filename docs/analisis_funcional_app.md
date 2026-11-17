@@ -128,7 +128,7 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 
 En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend rellena `partidas` (+ `resultado_json`) y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o `404` si la sala no existe. Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
 
-`GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo }] }` o `404` si la sala no existe. La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
+`GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo, nombre_visible }] }` o `404` si la sala no existe (`nombre_visible` es para que la mesa rotule a cada jugador). La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
 El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X-Internal-Secret` no coincida con la variable de entorno `INTERNAL_API_SECRET` (definida en `backend/.env.example` y en `docker-compose.yml`). El servidor de partida debe leer el mismo valor de su propia configuración — no es JWT de usuario, es un secreto fijo compartido entre los dos procesos.
 
@@ -160,15 +160,21 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 
 | Mensaje | Payload | Cuándo |
 |---|---|---|
-| `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
-| `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador | Tras cada acción válida |
+| `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
+| `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` | Al finalizar |
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
-| `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. |
+| `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
 
 **Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
 
 **Jugadas válidas:** cada `estado_partida` incluye `jugadas_validas`, la lista de lo que ese jugador puede enviar en ese momento, con el mismo formato con que se envía (`{ tipo, ...payload }`). El cliente la usa para saber qué cartas o botones activar, sin conocer las reglas. Puede quedarse desfasada si otro jugador actúa a la vez; en ese caso el servidor responde `error` y el siguiente `estado_partida` trae la lista buena.
+
+**Última jugada (PBI-12):** cada `estado_partida` incluye `ultima_jugada`, lo que todos pueden saber de la última jugada aceptada: `{ numero, jugador_id, tipo, ...datos públicos }` (`carta_id`, `palo`, `figura` o `cantidad`), o `{}` si aún no ha jugado nadie. De un descarte del Mus solo va `num_cartas`, nunca qué cartas. `numero` cuenta las jugadas de la partida, para distinguir una jugada nueva de un estado repetido (p. ej. al reconectarse). El cliente lo usa para anunciar lo que dice cada jugador ("¡Las 40!", "Envido 2"), para dejar la baza completa a la vista antes de recogerla y para saber que el servidor ha aceptado su carta.
+
+**Motivo del rechazo (PBI-12):** si el motor tiene un método `explicar_rechazo(estado, jugador_id, jugada)`, `RoomManager` manda su texto en el `error` en vez del genérico "Jugada no válida". Lo tienen el Guiñote, el Tute y el Mus.
+
+**Pantalla de partida (PBI-12):** los tres juegos, a 2 y a 4 jugadores, se juegan en la misma mesa del cliente (`game/client/ui/mesa/`): mismas cartas, etiquetas, letreros y botones. La mesa solo pinta el `estado_partida` y deja hacer lo que viene en `jugadas_validas`.
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 
@@ -380,7 +386,7 @@ El "mano" habla primero en cada jugada, en este orden fijo: Grande → Chica →
 
 ## 10. Reglas funcionales — Tute (PBI-05, prioridad media)
 
-Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote y Mus, el reglamento del Tute define **tres variantes con mecánica distinta según el número de jugadores** — no es solo "menos gente en la mesa": cambia si existe fase de robo o no. **Decisión de equipo: PBI-05 implementa únicamente el Tute para 4 jugadores por parejas** (reutiliza el mismo patrón de mesa y motor que Guiñote). Las variantes de 2 y 3 jugadores quedan documentadas por completitud pero **fuera de alcance actual**; si se quisieran más adelante, serían una PBI nueva.
+Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote y Mus, el reglamento del Tute define **tres variantes con mecánica distinta según el número de jugadores** — no es solo "menos gente en la mesa": cambia si existe fase de robo o no. **Decisión de equipo: PBI-05 implementa el Tute para 4 jugadores por parejas** (reutiliza el mismo patrón de mesa y motor que Guiñote). **PBI-12 añade la variante de 2 jugadores** al unificar los tres juegos (1 contra 1 y por parejas): en el servidor, `motor_tute.gd` elige entre `motor_tute_dos.gd` y `motor_tute_parejas.gd` según los jugadores de la sala. La variante de 3 jugadores queda documentada por completitud pero **fuera de alcance actual**.
 
 **Baraja, orden y valor (común a las 3 variantes).** Española de 40 cartas. De mayor a menor: As, Tres, Rey, **Caballo, Sota**, Siete, Seis, Cinco, Cuatro, Dos.
 
@@ -405,7 +411,7 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 - Tute: reunir los 4 Reyes ("Tute de reyes") o los 4 Caballos ("Tute de caballos") en la mano de **un solo** integrante de la pareja gana la mano al instante.
 - Gana la mano la pareja con más tantos (cartas de bazas + cantes + últimas).
 
-### Tute para 2 jugadores (fuera de alcance actual — documentado por completitud)
+### Tute para 2 jugadores (PBI-12)
 
 - Se reparten **8 cartas** cada uno; el resto queda en un mazo (baceta) bajo la carta de triunfo volteada.
 - **Mientras queda baceta:** solo es obligatorio asistir al palo de triunfo (sin necesidad de "montarlo"); para el resto de palos no hay obligación de asistir ni fallar. **Al agotarse la baceta:** pasa a ser obligatorio asistir, montar y fallar (arrastre completo).

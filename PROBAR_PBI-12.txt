@@ -1,0 +1,72 @@
+PROBAR LA PBI-12 (Guinote, Tute y Mus en la misma mesa, a 2 y a 4 jugadores)
+==========================================================================
+
+Lo que se prueba: lobby -> sala de espera -> partida contra el servidor real,
+con los 3 juegos y los 2 modos en la misma mesa.
+
+REQUISITOS
+  - Docker Desktop abierto.
+  - Godot 4.7.2 (el editor normal, sin .NET).
+  - La rama de la PBI-12 descargada (ver paso 0).
+  - Si tienes otra base de datos usando el puerto 5432, paraila antes
+    (por ejemplo: docker stop NOMBRE_DEL_CONTENEDOR).
+
+PASO 0 - Bajar la rama (una vez, desde la carpeta del repositorio)
+  git fetch origin
+  git checkout feature/pbi-12-unificacion
+
+PASO 1 - Levantar backend + base de datos + servidor de partida
+  docker compose up --build -d
+
+  Espera unos segundos y comprueba que los 3 estan "Up":
+  docker compose ps
+
+PASO 2 - Importar el proyecto (solo la primera vez)
+  godot --headless --path game --import
+
+  (Si "godot" no se reconoce, usa la ruta completa al ejecutable de Godot.)
+
+PASO 3 - Abrir 4 ventanas en una sola pantalla
+  En PowerShell, desde la carpeta del repositorio. Cambia la ruta de GODOT
+  por la tuya. Las ventanas son de 768x408 y caben en una pantalla de 1536x816
+  o mas; si la tuya es mas pequena, baja los numeros.
+
+  $GODOT = "C:\ruta\a\Godot_v4.7.2-stable_win64.exe"
+  foreach ($pos in "0,0","768,0","0,408","768,408") {
+    Start-Process $GODOT -ArgumentList "--path","game","--resolution","768x408","--position",$pos,"res://client/ui/login/login.tscn"
+  }
+
+  Alternativa: abrir game/project.godot en el editor, menu
+  Depurar -> Personalizar instancias de ejecucion -> 4 instancias,
+  abrir client/ui/login/login.tscn y pulsar F6.
+
+PASO 4 - Jugar
+  1. En cada ventana: Registrarse con un correo distinto (a@t.es, b@t.es,
+     c@t.es, d@t.es), nombre y contrasena. Despues, iniciar sesion.
+  2. En la ventana 1: Crear sala -> elegir juego y numero de jugadores.
+  3. En las demas: unirse a esa sala. La partida empieza sola al llenarse.
+  4. Con 2 jugadores usa solo 2 ventanas.
+  Repetir con: Guinote, Tute y Mus, a 2 y a 4 (6 combinaciones).
+
+QUE MIRAR
+  - Mesa: tapete verde, tu mano en abanico, dorsos de los rivales, etiquetas
+    con los nombres (la de quien juega brilla en dorado).
+  - Echar carta: arrastrarla al centro. Si no vale, vuelve a la mano y sale un
+    texto rojo explicando por que.
+  - Las cartas que no puedes echar salen en gris.
+  - Al cerrarse una baza, queda 2 segundos a la vista y se recoge.
+  - Letreros de lo que dice cada jugador ("Las 40", "Envido 2", "Quiero"...).
+  - Botones a la derecha de la mano (Cantar, Cambiar pinta, Mus, Envido,
+    Capote en el Tute a 2...).
+  - Mus: pulsar cartas para elegir el descarte; al acabar la mano se ensenan
+    las cartas de todos.
+  - Final: panel con el resultado y boton "Volver al lobby".
+  - Fallos graves: cartas que desaparecen, partida congelada, botones que no
+    hacen nada, textos solapados.
+
+  Para anotar un fallo: modo, numero de jugadores, que hiciste y que paso.
+
+AL TERMINAR
+  docker compose down
+  (No borra los datos. Si no lo haces, los contenedores siguen ocupando el
+  puerto 5432.)

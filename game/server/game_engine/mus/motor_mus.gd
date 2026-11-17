@@ -472,6 +472,9 @@ func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary:
 		"mano": e.jugador_mano,
 		"turno": e.turno,
 		"mi_mano": _ids(e.manos[jugador_id]),
+		# Para la mesa: los dorsos de cada jugador y la pila del mazo.
+		"cartas_por_jugador": e.manos.map(func(mano: Array) -> int: return mano.size()),
+		"cartas_en_mazo": e.mazo.size(),
 		"cartas_pedidas": e.cartas_pedidas.duplicate(),
 		"rondas_de_descarte": e.rondas_de_descarte,
 		"lance": nombre_lance(e.lance) if en_lances else null,
@@ -527,3 +530,35 @@ static func _ids(cartas: Array) -> Array[String]:
 	for carta: Carta in cartas:
 		ids.append(carta.id)
 	return ids
+
+
+## Por qué no vale lo que ha intentado [param jugador_id], dicho para el
+## jugador; "" si no hay nada más concreto que el error genérico (PBI-12: el
+## servidor explica por qué rechaza una jugada). Lo usa RoomManager.
+func explicar_rechazo(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> String:
+	var e := estado as EstadoMus
+	if ha_terminado(e):
+		return ""
+	if jugador_id != e.turno:
+		return "Espera tu turno."
+	var tipo: Variant = jugada.get("tipo", "")
+	match tipo:
+		MensajesRed.MUS, MensajesRed.NO_MUS:
+			if e.fase != EstadoMus.Fase.MUS:
+				return "Ya no se puede pedir ni cortar el mus."
+		MensajesRed.DESCARTAR:
+			if e.fase != EstadoMus.Fase.DESCARTE:
+				return "Ahora no toca descartarse."
+			return "Elige entre 1 y 4 cartas de tu mano para descartarte."
+		MensajesRed.PASAR, MensajesRed.ENVIDAR, MensajesRed.ORDAGO, MensajesRed.QUIERO, MensajesRed.NO_QUIERO:
+			if e.fase != EstadoMus.Fase.LANCES:
+				return "Todavía no se puede envidar: primero hay que decidir el mus."
+			if tipo == MensajesRed.PASAR and not e.envite.is_empty():
+				return "Hay un envite: tienes que quererlo, no quererlo o subirlo."
+			if tipo in [MensajesRed.QUIERO, MensajesRed.NO_QUIERO] and e.envite.is_empty():
+				return "No hay ningún envite que contestar."
+			if tipo == MensajesRed.ENVIDAR:
+				if not e.envite.is_empty() and e.envite["ordago"]:
+					return "Ante un órdago solo se puede querer o no querer."
+				return "El envite tiene que ser de %d a %d piedras." % [ENVITE_MINIMO, ENVITE_MAXIMO]
+	return ""

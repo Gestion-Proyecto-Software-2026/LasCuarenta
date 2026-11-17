@@ -11,6 +11,8 @@ const CANTAR := "cantar"
 const CANTAR_TUTE := "cantar_tute"
 const CAMBIAR_SIETE := "cambiar_siete"
 const NO_CAMBIAR_SIETE := "no_cambiar_siete"
+## Tute de 2: anunciar que se ganarán todas las bazas del arrastre.
+const CAPOTE := "capote"
 const MUS := "mus"
 const NO_MUS := "no_mus"
 const DESCARTAR := "descartar"
