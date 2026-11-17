@@ -118,7 +118,9 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 | Método | Ruta | Respuesta |
 |---|---|---|
 | GET | `/usuarios/:id/historial` | `200 [{ partida_id, juego, fecha, resultado, gano }]` |
-| GET | `/ranking?juego=guinote` | `200 [{ usuario_id, nombre_visible, puntos_totales, posicion }]` |
+| GET | `/ranking?juego=guinote` | `200 [{ usuario_id, nombre_visible, puntos_totales, partidas_jugadas, partidas_ganadas, posicion }]` |
+
+`/ranking` es **público** (no exige token). `puntos_totales` = suma de `partida_jugadores.puntos_obtenidos` del jugador en ese juego (sin `juego`, en todos). Orden: `puntos_totales` desc, a igualdad más `partidas_ganadas` y luego `nombre_visible`; `posicion` es el `RANK()` por puntos, así que los empatados a puntos comparten puesto (1, 2, 2, 4…). Parámetro opcional `limite` (1-500, 100 por defecto). `400` si `juego` o `limite` no son válidos. En el cliente se abre desde el botón *Ranking* del lobby (`game/client/ui/ranking/`).
 
 ### Interno (solo lo llama el servidor de partida, con secreto compartido servidor-a-servidor, nunca el cliente)
 | Método | Ruta | Cabecera | Body |

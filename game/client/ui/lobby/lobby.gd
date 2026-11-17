@@ -6,6 +6,7 @@ const ESCENA_FILA := preload("res://client/ui/lobby/sala_fila.tscn")
 const ESCENA_CREAR_SALA := preload("res://client/ui/lobby/crear_sala.tscn")
 const ESCENA_LOGIN := "res://client/ui/login/login.tscn"
 const ESCENA_ESPERA := "res://client/ui/espera/espera.tscn"
+const ESCENA_RANKING := "res://client/ui/ranking/ranking.tscn"
 
 @onready var etiqueta_usuario: Label = %EtiquetaUsuario
 @onready var etiqueta_error: Label = %EtiquetaError
@@ -13,6 +14,7 @@ const ESCENA_ESPERA := "res://client/ui/espera/espera.tscn"
 @onready var boton_crear: Button = %BotonCrear
 @onready var boton_actualizar: Button = %BotonActualizar
 @onready var boton_cerrar_sesion: Button = %BotonCerrarSesion
+@onready var boton_ranking: Button = %BotonRanking
 @onready var lista_salas: VBoxContainer = %ListaSalas
 
 ## Por defecto el autoload; los tests de GUT lo sustituyen por un doble.
@@ -28,7 +30,12 @@ func _ready() -> void:
 	boton_crear.pressed.connect(_on_boton_crear_pressed)
 	boton_actualizar.pressed.connect(_on_boton_actualizar_pressed)
 	boton_cerrar_sesion.pressed.connect(_on_boton_cerrar_sesion_pressed)
+	boton_ranking.pressed.connect(_on_boton_ranking_pressed)
 	refrescar()
+
+
+func _on_boton_ranking_pressed() -> void:
+	get_tree().change_scene_to_file(ESCENA_RANKING)
 
 
 func refrescar() -> void:

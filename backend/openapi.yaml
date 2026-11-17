@@ -395,7 +395,12 @@ paths:
     get:
       tags: [Historial y ranking]
       summary: Ranking agregado por juego
-      description: "⚠️ Pendiente de implementar (responde 501). PBI-07."
+      description: >
+        Clasificación pública (sin token). PBI-07. Se calcula agregando
+        `partida_jugadores` (sin tabla propia): `puntos_totales` es la suma de
+        `puntos_obtenidos`. Orden: `puntos_totales` desc, luego `partidas_ganadas`
+        desc y `nombre_visible` asc. `posicion` usa RANK() sobre los puntos, así que
+        los empates a puntos comparten puesto. Sin `juego` agrega todos los juegos.
       security: []
       parameters:
         - name: juego
@@ -403,6 +408,14 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/Juego"
+        - name: limite
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
       responses:
         "200":
           description: Clasificación
@@ -412,6 +425,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/RankingEntrada"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
 
   /interno/salas/{id}:
     get:
@@ -730,6 +745,10 @@ components:
         nombre_visible:
           type: string
         puntos_totales:
+          type: integer
+        partidas_jugadas:
+          type: integer
+        partidas_ganadas:
           type: integer
         posicion:
           type: integer
