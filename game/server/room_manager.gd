@@ -16,9 +16,23 @@ signal mensaje_para(peer_id: int, mensaje: Dictionary)
 signal expulsar(peer_id: int)
 
 const ESTADOS_SALA_JUGABLES := ["esperando", "en_curso"]
+## Tiempo límite para decidir (PBI-14, issue #37): segundos que tiene cada
+## jugador del que depende la partida antes de que el servidor juegue por él.
+const SEGUNDOS_POR_TURNO_POR_DEFECTO := 45.0
+const AVISO_TIEMPO_AGOTADO := "Se te ha acabado el tiempo: se ha jugado por ti."
+## Modo ausente: a quien se le acaba el tiempo [constant TIEMPOS_AGOTADOS_PARA_AUSENTE]
+## veces seguidas se le da por ido: el servidor juega por él casi al instante
+## hasta que vuelva a jugar él, para no hacer esperar a los demás en cada turno.
+const TIEMPOS_AGOTADOS_PARA_AUSENTE := 2
+const SEGUNDOS_DE_AUSENTE := 2.0
+const AVISO_AUSENTE := "Se te ha dado por ausente: el servidor jugará por ti hasta que vuelvas a jugar tú."
 
 ## sala_id -> SalaActiva
 var salas_activas: Dictionary = {}
+## 0 o menos desactiva el tiempo límite.
+var segundos_por_turno: float
+## Reloj en milisegundos. Los tests lo sustituyen para no tener que esperar.
+var reloj: Callable = func() -> int: return Time.get_ticks_msec()
 
 var _backend: Node
 var _jwt_secret: String
@@ -39,11 +53,18 @@ class _Consulta:
 
 ## [param backend] es un [ClienteBackend] (o un doble en los tests);
 ## [param motores] asocia el nombre del juego (como lo devuelve el backend) al
-## script de su [MotorDeJuego].
-func _init(backend: Node, jwt_secret: String, motores: Dictionary) -> void:
+## script de su [MotorDeJuego]; [param p_segundos_por_turno] es el tiempo
+## límite para decidir (0 lo desactiva).
+func _init(backend: Node, jwt_secret: String, motores: Dictionary,
+		p_segundos_por_turno := SEGUNDOS_POR_TURNO_POR_DEFECTO) -> void:
 	_backend = backend
 	_jwt_secret = jwt_secret
 	_motores = motores
+	segundos_por_turno = p_segundos_por_turno
+
+
+func _process(_delta: float) -> void:
+	comprobar_tiempos()
 
 
 func conectar(peer_id: int) -> void:
@@ -231,6 +252,7 @@ func _actualizar_participantes(sala: SalaActiva) -> void:
 
 func _empezar(sala: SalaActiva) -> void:
 	sala.estado = sala.motor.iniciar(sala.capacidad)
+	_actualizar_tiempos(sala, -1)
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_inicio(sala, posicion)
 		_enviar_estado(sala, posicion)
@@ -252,9 +274,18 @@ func _jugar(peer_id: int, tipo: String, payload: Dictionary) -> void:
 	if not resultado.ok:
 		_enviar_error(peer_id, _motivo_del_rechazo(sala, asiento, jugada, resultado.error))
 		return
+	# Si juega él, no está ausente: vuelve a tener su tiempo normal.
+	sala.agotados_seguidos.erase(asiento)
+	_avanzar(sala, asiento, jugada, resultado.estado)
 
-	sala.estado = resultado.estado
-	sala.ultima_jugada = _jugada_publica(jugada, asiento, sala.ultima_jugada.get("numero", 0) + 1)
+
+## Deja [param estado] como estado de la partida tras [param jugada] de
+## [param quien] (una persona o, si se le acabó el tiempo, el servidor), se lo
+## cuenta a todos y la cierra si ha terminado.
+func _avanzar(sala: SalaActiva, quien: int, jugada: Dictionary, estado: EstadoPartida) -> void:
+	sala.estado = estado
+	sala.ultima_jugada = _jugada_publica(jugada, quien, sala.ultima_jugada.get("numero", 0) + 1)
+	_actualizar_tiempos(sala, quien)
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_estado(sala, posicion)
 	if sala.motor.ha_terminado(sala.estado):
@@ -268,6 +299,74 @@ func _motivo_del_rechazo(sala: SalaActiva, posicion: int, jugada: Dictionary, er
 		return error
 	var motivo: String = sala.motor.call("explicar_rechazo", sala.estado, posicion, jugada)
 	return motivo if not motivo.is_empty() else error
+
+
+## Juega por quien haya agotado su tiempo para decidir. Se llama en cada frame
+## ([method _process]); los tests la llaman a mano tras adelantar [member reloj].
+func comprobar_tiempos() -> void:
+	if segundos_por_turno <= 0:
+		return
+	var ahora: int = reloj.call()
+	for sala_id: String in salas_activas.keys():
+		var sala: SalaActiva = salas_activas.get(sala_id)
+		if sala == null or not sala.empezada():
+			continue
+		for posicion: int in sala.limite_de:
+			if sala.limite_de[posicion] <= ahora:
+				# Una por sala y vuelta: tras jugar cambian los límites.
+				_jugar_por_tiempo(sala, posicion)
+				break
+
+
+func _jugar_por_tiempo(sala: SalaActiva, posicion: int) -> void:
+	var jugada := sala.motor.jugada_por_tiempo(sala.estado, posicion)
+	var resultado := sala.motor.aplicar_jugada(sala.estado, posicion, jugada)
+	if jugada.is_empty() or not resultado.ok:
+		# No debería pasar (el motor elige entre sus jugadas válidas); se quita el
+		# límite para no reintentarlo en cada frame.
+		push_error("Sala %s: no se pudo jugar por tiempo por el jugador %d" % [sala.sala_id, posicion])
+		sala.limite_de.erase(posicion)
+		return
+	var era_ausente := sala.es_ausente(posicion)
+	sala.agotados_seguidos[posicion] = sala.agotados_seguidos.get(posicion, 0) + 1
+	_avanzar(sala, posicion, jugada, resultado.estado)
+	# Después del estado (que borra los errores en pantalla) para que se vea.
+	if salas_activas.has(sala.sala_id) and sala.peer_en_posicion.has(posicion) and not era_ausente:
+		_enviar_error(sala.peer_en_posicion[posicion],
+			AVISO_AUSENTE if sala.es_ausente(posicion) else AVISO_TIEMPO_AGOTADO)
+
+
+## Recalcula quién tiene cuenta atrás. Quien acaba de jugar y quien empieza a
+## ser esperado estrenan tiempo; quien ya esperaba conserva el que le quedaba
+## (p. ej. cuando otro canta mientras él tiene que echar carta). Quien está
+## ausente (se le ha acabado el tiempo [constant TIEMPOS_AGOTADOS_PARA_AUSENTE]
+## veces seguidas) tiene solo [constant SEGUNDOS_DE_AUSENTE].
+func _actualizar_tiempos(sala: SalaActiva, quien_ha_jugado: int) -> void:
+	if segundos_por_turno <= 0:
+		return
+	var ahora: int = reloj.call()
+	var nuevos := {}
+	for posicion: int in sala.motor.jugadores_esperados(sala.estado):
+		if posicion != quien_ha_jugado and sala.limite_de.has(posicion):
+			nuevos[posicion] = sala.limite_de[posicion]
+		else:
+			var segundos := SEGUNDOS_DE_AUSENTE if sala.es_ausente(posicion) else segundos_por_turno
+			nuevos[posicion] = ahora + int(segundos * 1000.0)
+	sala.limite_de = nuevos
+
+
+## [code][{ "posicion": int, "segundos": float, "ausente": bool }][/code]: cuánto
+## le queda a cada jugador esperado, para que el cliente enseñe la cuenta atrás.
+func _tiempos_para_decidir(sala: SalaActiva) -> Array[Dictionary]:
+	var tiempos: Array[Dictionary] = []
+	var ahora: int = reloj.call()
+	for posicion: int in sala.limite_de:
+		tiempos.append({
+			"posicion": posicion,
+			"segundos": maxf(0.0, (sala.limite_de[posicion] - ahora) / 1000.0),
+			"ausente": sala.es_ausente(posicion),
+		})
+	return tiempos
 
 
 func _terminar(sala: SalaActiva) -> void:
@@ -302,6 +401,7 @@ func _enviar_estado(sala: SalaActiva, posicion: int) -> void:
 	var payload := sala.motor.vista_para_jugador(sala.estado, posicion)
 	payload["jugadas_validas"] = sala.motor.jugadas_validas(sala.estado, posicion)
 	payload["ultima_jugada"] = sala.ultima_jugada
+	payload["tiempos_para_decidir"] = _tiempos_para_decidir(sala)
 	_enviar(sala.peer_en_posicion[posicion], MensajesRed.ESTADO_PARTIDA, payload)
 
 

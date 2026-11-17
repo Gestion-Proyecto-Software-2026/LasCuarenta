@@ -107,3 +107,45 @@ func _validar(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) -> Str
 	if jugada not in validas:
 		return ERROR_JUGADA_NO_VALIDA
 	return ""
+
+
+# --- Tiempo límite para decidir (PBI-14, issue #37) ---------------------------
+# RoomManager da a cada jugador del que depende la partida un tiempo para jugar;
+# si se le acaba, juega por él lo que diga [method jugada_por_tiempo]. Así nadie
+# se queda atascado porque otro se haya ido (AFK) o se haya desconectado.
+
+
+## Tipos de jugada que se pueden hacer pero que la partida no espera (p. ej.
+## cantar en el Guiñote). Quien solo tiene jugadas de estos tipos no tiene
+## cuenta atrás. Por defecto, ninguno.
+func tipos_de_jugada_opcionales() -> Array[String]:
+	return []
+
+
+## Jugadores de los que depende ahora que la partida avance: los que tienen
+## alguna jugada válida que no sea opcional.
+func jugadores_esperados(estado: EstadoPartida) -> Array[int]:
+	var esperados: Array[int] = []
+	if ha_terminado(estado):
+		return esperados
+	for jugador_id in estado.num_jugadores:
+		if not _jugadas_obligatorias(estado, jugador_id).is_empty():
+			esperados.append(jugador_id)
+	return esperados
+
+
+## Lo que se juega por [param jugador_id] cuando se le acaba el tiempo, o
+## [code]{}[/code] si no tiene nada pendiente. Por defecto, la primera jugada
+## obligatoria; cada juego puede elegir una más prudente.
+func jugada_por_tiempo(estado: EstadoPartida, jugador_id: int) -> Dictionary:
+	var obligatorias := _jugadas_obligatorias(estado, jugador_id)
+	return {} if obligatorias.is_empty() else obligatorias[0]
+
+
+func _jugadas_obligatorias(estado: EstadoPartida, jugador_id: int) -> Array[Dictionary]:
+	var opcionales := tipos_de_jugada_opcionales()
+	var obligatorias: Array[Dictionary] = []
+	for jugada: Dictionary in jugadas_validas(estado, jugador_id):
+		if jugada.get("tipo") not in opcionales:
+			obligatorias.append(jugada)
+	return obligatorias
