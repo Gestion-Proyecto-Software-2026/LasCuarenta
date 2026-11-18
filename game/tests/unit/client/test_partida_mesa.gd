@@ -357,3 +357,90 @@ func test_si_se_cae_el_servidor_se_avisa_y_se_puede_salir() -> void:
 	var panel: Control = _tapete().find_child("PanelResultado", true, false)
 	assert_string_starts_with((panel.get_child(0) as Label).text, "SE HA PERDIDO LA CONEXIÓN")
 	assert_true((partida.find_child("BotonVolverLobby", true, false) as Button).visible)
+
+
+# --- Chat y denuncias (PBI-08) ---
+
+const DENUNCIA := {"estado": "pendiente", "mensaje_id": 1, "mensaje": "tengo el as", "denunciante": 1,
+	"denunciado": 0, "equipo_denunciado": 0, "segundos": 60.0, "respondido_por": -1}
+
+
+func _denunciar(estado := "pendiente") -> void:
+	var denuncia := DENUNCIA.duplicate()
+	denuncia["estado"] = estado
+	red.denuncia = denuncia if estado == "pendiente" else {}
+	red.denuncia_actualizada.emit(denuncia)
+
+
+func test_la_mesa_tiene_su_chat_con_los_mensajes_que_ya_habian_llegado() -> void:
+	red = ClienteRedFalso.new()
+	red.config = {"sala_id": "s1", "juego": "guinote", "tu_posicion": 0, "jugadores": JUGADORES_4}
+	red.ultimo_estado = _con(GUINOTE, {"cartas_por_jugador": [6, 6, 6, 6]})
+	red.chat = [{"id": 1, "posicion": 1, "equipo": 1, "nombre": "Luis", "mensaje": "¡suerte!", "durante_partida": false}]
+	add_child_autofree(red)
+	partida = PARTIDA_MESA.instantiate()
+	partida.red = red
+	partida.pausa_baza = 0.0
+	add_child_autofree(partida)
+	await wait_frames(1)
+	assert_not_null(partida.chat)
+	assert_string_contains(partida.chat.texto_visible(), "J2 · Luis: ¡suerte!")
+
+
+func test_una_denuncia_pendiente_pausa_la_mesa() -> void:
+	var estado := _con(GUINOTE, {"tiempos_para_decidir": [{"posicion": 0, "segundos": 40.0, "ausente": false}]})
+	await _abrir("guinote", JUGADORES_2, estado)
+	assert_ne(_botones(), [], "antes de la denuncia se puede jugar")
+	assert_true(partida.cuenta_atras.visible)
+	_denunciar()
+	assert_eq(_botones(), [], "en pausa no se ofrece ninguna jugada")
+	assert_false(partida.cuenta_atras.visible, "la cuenta atrás se para")
+	assert_has(_textos_en_la_mesa(), partida.ANUNCIO_PAUSA)
+	red.error_recibido.emit(RoomManager.ERROR_EN_PAUSA)
+	assert_eq(_botones(), [], "un error no devuelve las jugadas en pausa")
+
+
+func test_al_reanudarse_vuelven_las_jugadas_con_el_estado_nuevo() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	_denunciar()
+	_denunciar("no_admitida")
+	red.estado_actualizado.emit(_con(GUINOTE, {"tiempos_para_decidir": [{"posicion": 0, "segundos": 30.0, "ausente": false}]}))
+	assert_ne(_botones(), [])
+	assert_true(partida.cuenta_atras.visible)
+
+
+func test_quien_se_reconecta_en_pausa_empieza_sin_jugadas() -> void:
+	red = ClienteRedFalso.new()
+	red.config = {"sala_id": "s1", "juego": "guinote", "tu_posicion": 0, "jugadores": JUGADORES_2}
+	red.ultimo_estado = _con(GUINOTE, {"tiempos_para_decidir": [{"posicion": 0, "segundos": 40.0, "ausente": false}]})
+	red.denuncia = DENUNCIA.duplicate()
+	add_child_autofree(red)
+	partida = PARTIDA_MESA.instantiate()
+	partida.red = red
+	partida.pausa_baza = 0.0
+	add_child_autofree(partida)
+	await wait_frames(1)
+	assert_eq(_botones(), [])
+	assert_false(partida.cuenta_atras.visible)
+	assert_true(partida.chat.panel_denuncia.visible, "y ve la denuncia en el chat")
+
+
+func test_al_terminar_por_renuncio_el_chat_sigue_pero_sin_denuncias() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	_denunciar()
+	_denunciar("admitida")
+	red.partida_terminada.emit({"equipo_ganador": 1, "puntos_por_equipo": [12, 30], "causa": "renuncio",
+		"motivo": "", "manos": []})
+	var panel: Control = _tapete().find_child("PanelResultado", true, false)
+	assert_string_contains((panel.get_child(0) as Label).text, "por renuncio")
+	assert_true(partida.chat._terminada)
+	assert_true(partida.chat.visible)
+
+
+func test_el_chat_no_tapa_la_etiqueta_del_jugador_de_la_izquierda() -> void:
+	await _abrir("guinote", JUGADORES_4, _con(GUINOTE, {"cartas_por_jugador": [6, 6, 6, 6]}))
+	var etiqueta: Control = _tapete().etiquetas_jugador[3]
+	var alto := partida.get_viewport_rect().size.y
+	assert_true(partida.chat.position.y >= etiqueta.position.y + etiqueta.size.y,
+		"el chat empieza por debajo de la etiqueta de la izquierda")
+	assert_almost_eq(partida.chat.position.y + partida.chat.size.y, alto - 10.0, 0.5, "pegado abajo")

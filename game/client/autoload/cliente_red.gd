@@ -13,6 +13,11 @@ signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
 signal error_recibido(mensaje: String)
+## Chat de la partida (PBI-08): un mensaje nuevo, la lista entera al unirse o
+## reconectarse, y una denuncia que empieza o se resuelve.
+signal chat_recibido(mensaje: Dictionary)
+signal chat_reiniciado(mensajes: Array)
+signal denuncia_actualizada(denuncia: Dictionary)
 
 ## Datos de la sala a la que se quiere jugar, guardados por el lobby antes de
 ## cambiar a la pantalla de espera (ver lobby.gd).
@@ -24,6 +29,11 @@ var servidor_direccion: String = ""
 var config: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
+## Mensajes del chat de la partida, del más antiguo al más reciente, y la
+## denuncia pendiente ({} si no hay). Se guardan aquí por lo mismo que el estado:
+## la mesa se crea después de que lleguen (chat_historial va al unirse).
+var chat: Array = []
+var denuncia: Dictionary = {}
 
 var _peer: ENetMultiplayerPeer = null
 
@@ -53,6 +63,8 @@ func conectar_al_servidor() -> void:
 	config = {}
 	ultimo_estado = {}
 	resultado = {}
+	chat = []
+	denuncia = {}
 	_peer = ENetMultiplayerPeer.new()
 	if _peer.create_client(partes[0], partes[1].to_int()) != OK:
 		_peer = null
@@ -80,6 +92,8 @@ func desconectar() -> void:
 	config = {}
 	ultimo_estado = {}
 	resultado = {}
+	chat = []
+	denuncia = {}
 
 
 func unirse_partida(usuario_id: String, token: String) -> void:
@@ -120,3 +134,13 @@ func _on_mensaje(peer_id: int, mensaje: Dictionary) -> void:
 			partida_terminada.emit(resultado)
 		MensajesRed.ERROR:
 			error_recibido.emit(payload.get("mensaje", ""))
+		MensajesRed.CHAT_MENSAJE:
+			chat.append(payload)
+			chat_recibido.emit(payload)
+		MensajesRed.CHAT_HISTORIAL:
+			var mensajes: Variant = payload.get("mensajes", [])
+			chat = mensajes if mensajes is Array else []
+			chat_reiniciado.emit(chat)
+		MensajesRed.DENUNCIA_CHAT:
+			denuncia = payload if payload.get("estado") == "pendiente" else {}
+			denuncia_actualizada.emit(payload)

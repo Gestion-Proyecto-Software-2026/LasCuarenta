@@ -101,3 +101,29 @@ func test_resultado_del_mus() -> void:
 		"Juego 2: Luis (3 - 5 piedras, por órdago)",
 		"Juego 3: Luis (20 - 41 piedras)",
 	]))
+
+
+# --- Renuncio admitido en el chat (PBI-08) ---
+
+func test_resultado_por_renuncio_en_la_mesa_de_4() -> void:
+	var texto := Textos.resultado("guinote", {
+		"equipo_ganador": 0, "puntos_por_equipo": [34, 12], "causa": "renuncio", "motivo": "", "manos": [],
+	}, CUATRO)
+	assert_eq(texto, "FIN DE LA PARTIDA\n"
+		+ "Gana la pareja A (Ana y Marta) por renuncio: la pareja B (Luis y Jugador 4) admitió haber revelado información por el chat.\n"
+		+ "Marcador en ese momento: la pareja A (Ana y Marta) 34 · la pareja B (Luis y Jugador 4) 12")
+
+
+func test_resultado_por_renuncio_en_el_mus_a_2_cuenta_juegos() -> void:
+	var texto := Textos.resultado("mus", {
+		"equipo_ganador": 1, "puntos_por_equipo": [1, 0], "causa": "renuncio", "juegos": [],
+	}, DOS)
+	assert_string_contains(texto, "Gana Luis por renuncio: Ana admitió")
+	assert_string_contains(texto, "Marcador en ese momento: Ana 1 · Luis 0 juegos")
+
+
+func test_una_partida_completa_no_cambia_por_llevar_causa() -> void:
+	var resultado := {"equipo_ganador": 1, "puntos_por_equipo": [2, 1], "juegos": []}
+	var sin_causa := Textos.resultado("mus", resultado, DOS)
+	resultado["causa"] = "completa"
+	assert_eq(Textos.resultado("mus", resultado, DOS), sin_causa)
