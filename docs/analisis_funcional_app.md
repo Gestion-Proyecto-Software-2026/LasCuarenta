@@ -62,12 +62,16 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 
 | Tabla | Campos clave | Notas |
 |---|---|---|
-| `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro` | Contraseña siempre cifrada (bcrypt o similar) |
+| `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro`, `historial_publico` (booleano, `true` por defecto) | Contraseña siempre cifrada (bcrypt o similar). `historial_publico` decide si los demás pueden ver su historial y sus estadísticas (PBI-06, §5) |
 | `codigos_recuperacion` | `id`, `usuario_id` → `usuarios.id`, `codigo_hash`, `expira_en`, `usado`, `creado_en` | Código de un solo uso para `/auth/restablecer` (PBI-01); se envía en claro por correo, solo se guarda su SHA-256 |
 | `salas` | `id`, `juego` (`guinote`/`mus`/`tute`), `estado` (`esperando`/`en_curso`/`finalizada`), `capacidad` (2 o 4), `creador_id` → `usuarios.id`, `nombre` (1-40 caracteres, por defecto "Sala de Guiñote"), `password_hash` (nullable; bcrypt del SHA-256 que envía el cliente, igual que `usuarios.password_hash`), `fecha_creacion` | |
 | `sala_participantes` | `sala_id`, `usuario_id`, `posicion` (0-3 a 4 jugadores, 0-1 a 2), `equipo` (0/1; con pareja a 4, cada jugador el suyo a 2 — `equipo_de(posicion) = posicion % 2`, igual en Guiñote y Mus) | Tabla puente |
-| `partidas` | `id`, `sala_id`, `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json` | Registro histórico de una partida ya terminada |
-| `partida_jugadores` | `partida_id`, `usuario_id`, `equipo`, `puntos_obtenidos`, `gano` (booleano) | Base para historial (PBI-06) y ranking (PBI-07) |
+| `partidas` | `id`, `sala_id` (único), `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json`, `causa` (`completa` por defecto) | Registro histórico de una partida ya terminada. Una sala aloja una sola partida: el índice único sobre `sala_id` impide registrarla dos veces si el servidor de partida reintenta (§5). `fecha_inicio` y `fecha_fin` son las reales, las que manda el servidor de partida. `causa` es por qué terminó (`completa` o `renuncio`); la lista válida la mantiene el backend, no un CHECK |
+| `partida_jugadores` | `partida_id`, `usuario_id`, `posicion` (nullable), `equipo`, `puntos_obtenidos`, `gano` (booleano) | Base para historial (PBI-06) y ranking (PBI-07). `posicion` es el asiento en la mesa (0-3), para listar compañero y rivales en orden; queda vacía en las partidas registradas antes de PBI-06 |
+
+Índices de PBI-06 (`backend/migrations/005_historial_estadisticas.sql`): `partidas_sala_unica`, único, sobre `partidas(sala_id)`; `idx_partida_jugadores_usuario` sobre `partida_jugadores(usuario_id)` (las partidas de un usuario), e `idx_partidas_fecha_fin` sobre `partidas(fecha_fin DESC)` (el orden del historial).
+
+El **historial y las estadísticas** (PBI-06) salen de `partidas` + `partida_jugadores` cada vez que se piden: no se guardan en una tabla aparte.
 
 El **ranking** (PBI-07) se calcula agregando `partida_jugadores` — no hace falta tabla propia salvo que el rendimiento lo justifique más adelante.
 
@@ -114,19 +118,86 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 
 `servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve tanto al crear la sala como al unirse a ella, para que cualquiera de los dos pueda conectar. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
-### Historial y ranking (PBI-06, PBI-07)
+### Historial, estadísticas y privacidad (PBI-06)
+
+Todas exigen `Authorization: Bearer <token>`. En las rutas con `:id`, `me` es un alias del usuario del token; cualquier otro valor tiene que ser un UUID.
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/usuarios/:id/historial?juego=&limite=` | — | `200 [{ partida_id, sala_id, juego, num_jugadores, fecha_inicio, fecha_fin, resultado, gano, causa, motivo, equipo, puntos_equipo, puntos_rival, companeros, rivales }]` — las partidas terminadas del usuario, de la más reciente a la más antigua |
+| GET | `/usuarios/:id/estadisticas` | — | `200 { usuario_id, nombre_visible, historial_publico, totales, por_juego, racha_actual, mejor_racha_victorias, ultimos_resultados }` |
+| GET | `/usuarios/me/privacidad` | — | `200 { historial_publico }` |
+| PUT | `/usuarios/me/privacidad` | `{ historial_publico }` (booleano) | `200 { historial_publico }` |
+
+En el historial, `juego` (opcional: `guinote`, `mus` o `tute`) filtra por juego y `limite` (opcional, entero de 1 a 500, 100 por defecto) es el máximo de partidas que se devuelven.
+
+| Código | Cuándo | `error` |
+|---|---|---|
+| `400` | `:id` no es `me` ni un UUID | `id de usuario no válido` |
+| `400` | `juego` no es uno de los tres | `juego no válido, valores admitidos: guinote, mus, tute` |
+| `400` | `limite` no es un entero de 1 a 500 | `limite no válido (entero de 1 a 500)` |
+| `400` | `historial_publico` no es un booleano (`PUT`) | `historial_publico tiene que ser true o false` |
+| `401` | Sin token o con un token inválido | `no autenticado` / `token inválido` |
+| `403` | El historial es privado y quien lo pide no es su titular | `este historial es privado` |
+| `404` | El usuario consultado no existe | `el usuario no existe` |
+
+**Quién puede ver qué (privacidad).** El historial es público por defecto (`usuarios.historial_publico = true`). Su titular puede hacerlo privado, o volver a hacerlo público, con `PUT /usuarios/me/privacidad`; la privacidad solo se consulta y se cambia sobre uno mismo. Con el historial privado, solo el titular ve su historial y sus estadísticas: a cualquier otro usuario las dos rutas le responden `403`. El titular siempre ve los suyos. Las dos rutas comprueban el acceso igual (en `historialService.js`): primero que el usuario exista (`404`) y después, si no es quien pregunta, que su historial sea público (`403`).
+
+**Cada partida del historial**, vista desde el usuario consultado:
+- Orden: `fecha_fin` descendente; a igual fecha, `partida_id` descendente.
+- `num_jugadores` es 2 o 4: junto con `juego` da la modalidad (1 contra 1 o por parejas).
+- `fecha_inicio` y `fecha_fin`: ISO 8601 en UTC, las reales de la partida (las manda el servidor de partida al registrarla, ver Interno).
+- `resultado`: `"victoria"` si `gano`, si no `"derrota"`.
+- `causa`: por qué terminó (`completa` o `renuncio`, ver Interno). `motivo`: cómo se ganó, sacado de `resultado_json.motivo` (Guiñote y Tute: `tute`, `tantos`, `vuelta` o `capote`; Mus: `null`).
+- `equipo` es el del usuario (0 o 1). `puntos_equipo` son sus `puntos_obtenidos` y `puntos_rival`, los del otro equipo (0 si no hay). En el Mus son juegos ganados; en Guiñote y Tute, tantos.
+- `companeros` y `rivales`: `[{ usuario_id, nombre_visible, posicion }]`, ordenados por posición. `companeros` son los demás de su equipo (vacío a 2 jugadores); `rivales`, los del otro equipo.
+
+**Estadísticas.** Se calculan al pedirlas, a partir de las mismas partidas y en el mismo orden que el historial:
+- `totales` y cada entrada de `por_juego`: `{ jugadas, victorias, derrotas, porcentaje_victorias }` (en `por_juego`, además, `juego`). `por_juego` trae siempre los tres juegos, en el orden `guinote`, `mus`, `tute`, aunque sea con ceros.
+- `porcentaje_victorias` va redondeado a 1 decimal; 0 si no hay partidas.
+- `racha_actual`: `{ tipo, partidas }`, los resultados iguales seguidos contando desde la partida más reciente (`tipo` = `"victoria"` o `"derrota"`); `{ tipo: null, partidas: 0 }` si no hay partidas.
+- `mejor_racha_victorias`: la serie más larga de victorias seguidas, en orden cronológico.
+- `ultimos_resultados`: hasta 10 `"victoria"`/`"derrota"`, del más reciente al más antiguo.
+
+**De dónde sale este contrato.** Se han unido los criterios de aceptación de PBI-06 en Jira y las historias del backlog del TFG (HU-016, HU-037). Donde una fuente pide algo que la otra no, se suma: las estadísticas solo las pide Jira y la privacidad solo el backlog.
+
+| Fuente | Qué pide | Cómo queda |
+|---|---|---|
+| Jira CA1 | `GET /users/me/history` con JWT | `GET /usuarios/me/historial`: rutas en español, como el resto de la API, y `me` = el usuario del token |
+| Jira CA2 | Fecha y hora, modalidad, victoria/derrota, puntuación, rivales y compañero | `fecha_inicio`, `fecha_fin`, `juego`, `num_jugadores`, `resultado`, `puntos_equipo`, `puntos_rival`, `companeros`, `rivales` |
+| Jira CA3 | Guardar en la base de datos lo que manda el servidor de partida | `POST /interno/partidas` idempotente, con `posicion`, `causa` y las fechas reales; el servidor de partida reintenta (ver Interno) |
+| Jira CA4 | Pantalla de historial desde el menú principal, en orden cronológico | Botón "Historial" del lobby, que es el menú tras el login → `client/ui/historial/` |
+| Jira, título y descripción | Estadísticas de rendimiento, resultados y progresión | `GET /usuarios/:id/estadisticas`: totales, por juego, % de victorias, rachas y últimos 10 resultados |
+| HU-037 CA-136 | Juego, fecha de fin, marcador de los dos equipos, causa de fin y victoria/derrota, de la más reciente a la más antigua | Los mismos campos, más `motivo`; orden por `fecha_fin` descendente |
+| HU-037 CA-137/138 | Historial público por defecto; su titular puede hacerlo privado, y entonces solo lo ve él | `usuarios.historial_publico`, `/usuarios/me/privacidad` y `403` para los demás |
+| HU-016 CA-059/060/061 | Registrar sala, juego, participantes, ganador y marcador; una victoria anticipada conserva el marcador parcial y la causa | `partidas.causa`; la victoria anticipada con marcador parcial llega con el renuncio del chat (PBI-08) |
+
+### Ranking (PBI-07)
 | Método | Ruta | Respuesta |
 |---|---|---|
-| GET | `/usuarios/:id/historial` | `200 [{ partida_id, juego, fecha, resultado, gano }]` |
 | GET | `/ranking?juego=guinote` | `200 [{ usuario_id, nombre_visible, puntos_totales, posicion }]` |
 
 ### Interno (solo lo llama el servidor de partida, con secreto compartido servidor-a-servidor, nunca el cliente)
 | Método | Ruta | Cabecera | Body |
 |---|---|---|---|
 | GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
-| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, ... } }` |
+| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, causa, ... }, fecha_inicio, fecha_fin }` |
 
-En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend rellena `partidas` (+ `resultado_json`) y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o `404` si la sala no existe. Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
+En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) más `causa`, y `equipo` es `posicion % 2`. En una transacción que bloquea la sala (`SELECT ... FOR UPDATE`), el backend rellena `partidas` (`fecha_inicio`, `fecha_fin`, `causa` y el `resultado` entero en `resultado_json`) y `partida_jugadores` (`posicion`, `equipo`, `gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o algún jugador no tiene cuenta, `404` si la sala no existe o `409 { error: "la partida de esta sala ya está registrada" }`.
+
+Validación del body (`400 { error }` antes de tocar la base de datos):
+- `sala_id`: UUID.
+- `jugadores`: array no vacío, sin `usuario_id` ni posiciones repetidos (`"un jugador aparece más de una vez"` / `"dos jugadores en la misma posicion"`). Cada `usuario_id` es un UUID, `posicion` un entero de 0 a 3 y `equipo` un entero, 0 o 1.
+- `resultado`: objeto con `equipo_ganador` 0 o 1. `puntos_por_equipo`, si viene, son 2 enteros ≥ 0. `causa`, si viene, es `completa` o `renuncio`; si no viene, `completa`. Ningún texto de `resultado`, ni ninguna clave, puede llevar el carácter nulo (`\u0000`) ni UTF-16 mal formado, porque `resultado_json` es JSONB y PostgreSQL no los admite.
+- `fecha_inicio` y `fecha_fin`: opcionales, en ISO 8601 con fecha, hora y zona horaria (`Z` o `±hh:mm`), p. ej. `2026-11-18T10:24:13Z`, y con el año, ya pasado a UTC, entre 1 y 9999; se guardan en UTC. Si vienen las dos, `fecha_inicio` no puede ser posterior a `fecha_fin`. Sin `fecha_fin` se usa la hora del backend al registrar (`now()`), y sin `fecha_inicio`, la misma que `fecha_fin`.
+
+Además, si algún `usuario_id` tiene forma de UUID pero no corresponde a ninguna cuenta, el backend responde `400 { error: "algún jugador no existe" }`. Este 400 no sale de la validación del body, sino de la clave foránea de `partida_jugadores` (código `23503` de PostgreSQL), ya dentro de la transacción, que se deshace entera (`ROLLBACK`). Como es un 4xx, el servidor de partida no lo reintenta (ver "Registro desde el servidor de partida").
+
+**Causa.** `causa` dice por qué terminó la partida: `completa` (se jugó hasta el final) o `renuncio` (renuncio admitido en el chat, PBI-08). La lista válida es la constante `CAUSAS` de `internoService.js`, no un CHECK de la base de datos: cuando se implemente la derrota por desconexión (HU-013), añadir `desconexion` será tocar esa constante, sin migración.
+
+**Idempotencia.** Una sala aloja una sola partida: si ya hay una fila en `partidas` con ese `sala_id`, el backend responde `409` sin escribir nada. Así un reintento del servidor de partida no duplica el resultado. Se comprueba dentro de la transacción; si aun así llegan a la vez dos registros de la misma sala, el índice único `partidas(sala_id)` hace fallar al segundo (código `23505` de PostgreSQL), y se responde el mismo `409`.
+
+**Registro desde el servidor de partida.** Al terminar una partida, `RoomManager` añade `causa` al resultado del motor antes de mandar `partida_terminada`, así el cliente y el backend ven lo mismo. Tras avisar a los jugadores, registra `{ sala_id, jugadores, resultado, fecha_inicio, fecha_fin }`, con las fechas en ISO 8601 UTC: `fecha_inicio` es cuando empezó la partida (al conectarse todos) y `fecha_fin`, cuando terminó. Si el backend no contesta (código 0) o devuelve un 5xx, lo reintenta, hasta 3 intentos (`INTENTOS_REGISTRO`) con 2 s entre uno y otro. Un `409` quiere decir que ya estaba registrada y se da por bueno. Cualquier otro 4xx es un body que el backend no acepta: se escribe en el log (`push_error`) y no se reintenta, porque volvería a fallar igual. Si se agotan los intentos, también queda en el log con el código, y esa partida no llega al historial.
 
 `GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo, nombre_visible }] }` o `404` si la sala no existe (`nombre_visible` es para que la mesa rotule a cada jugador). La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
@@ -162,7 +233,7 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 |---|---|---|
 | `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
 | `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` + `tiempos_para_decidir` | Tras cada acción válida |
-| `partida_terminada` | `{ resultado }` | Al finalizar |
+| `partida_terminada` | `{ resultado }` — lo que da `calcular_resultado` (§7) más `causa` (`completa` o `renuncio`, §5 Interno) | Al finalizar |
 | `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
 
@@ -445,7 +516,7 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 4. El cliente conecta por ENet y envía `unirse_partida { usuario_id, token, sala_id }`. El servidor verifica el token y pide la sala al backend (`GET /interno/salas/:id`).
 5. El servidor de partida inicia la partida usando el motor genérico (§7) + el módulo del juego correspondiente, y empieza a intercambiar `jugar_carta` / `estado_partida`.
 6. Al terminar, el servidor de partida llama a `POST /interno/partidas` para persistir el resultado.
-7. El cliente recibe `partida_terminada` y puede volver al lobby o consultar el historial (`GET /usuarios/:id/historial`).
+7. El cliente recibe `partida_terminada` y vuelve al lobby. Desde el botón "Historial" del lobby consulta sus partidas y sus estadísticas (`GET /usuarios/me/historial`, `GET /usuarios/me/estadisticas`) y decide si su historial es público (`PUT /usuarios/me/privacidad`).
 
 ---
 

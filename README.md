@@ -34,7 +34,7 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI-03 — Partida completa de Guiñote | Alta | ✅ Motor de reglas completo y registrado en el servidor de partida |
 | PBI-04 — Partida completa de Mus | Media | ✅ Motor de reglas completo (2 o 4 jugadores), registrado y jugable desde el cliente en la mesa común (PBI-12) |
 | PBI-05 — Partida completa de Tute | Media | ✅ Motor de reglas (2 jugadores y 4 por parejas), registrado y jugable desde el cliente en la mesa común (PBI-12) |
-| PBI-06 — Historial y estadísticas | Media | ⏳ Pendiente (la ruta existe y responde `501`) |
+| PBI-06 — Historial y estadísticas | Media | ✅ Historial de partidas y estadísticas (totales, por juego, rachas y últimos resultados) en el backend y en una pantalla del cliente que se abre desde el lobby; público por defecto, cada jugador puede hacerlo privado |
 | PBI-07 — Ranking de jugadores | Baja | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-08 — Chat en partida | Baja | ⏳ Pendiente (el servidor responde que el chat no está disponible) |
 | PBI-09 — Moderación de salas | Baja | ⏳ Pendiente (`POST /salas/:id/expulsar` responde `501`) |
@@ -118,7 +118,7 @@ La fuente es la Definición de Hecho de la Práctica 1:
 ├── game/                    proyecto Godot (abrir game/project.godot)
 │   ├── client/              solo presentación e input
 │   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales
-│   │   ├── ui/              login, registro, recuperar, lobby, espera, tema visual
+│   │   ├── ui/              login, registro, recuperar, lobby, espera, historial, tema visual
 │   │   │   └── mesa/        la mesa común de los tres juegos (PBI-12): tapete, cartas y pantalla de partida
 │   │   └── scenes/          carta, mesa (cada escena en su carpeta, junto a su script)
 │   ├── server/              lógica autoritativa; ningún script hereda de un nodo visual
