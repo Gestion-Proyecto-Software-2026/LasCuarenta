@@ -62,12 +62,16 @@ Estas decisiones ya están tomadas. Si vuestra IA propone algo distinto, corregi
 
 | Tabla | Campos clave | Notas |
 |---|---|---|
-| `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro` | Contraseña siempre cifrada (bcrypt o similar) |
+| `usuarios` | `id`, `email` (único), `password_hash`, `nombre_visible`, `fecha_registro`, `historial_publico` (booleano, `true` por defecto) | Contraseña siempre cifrada (bcrypt o similar). `historial_publico` decide si los demás pueden ver su historial y sus estadísticas (PBI-06, §5) |
 | `codigos_recuperacion` | `id`, `usuario_id` → `usuarios.id`, `codigo_hash`, `expira_en`, `usado`, `creado_en` | Código de un solo uso para `/auth/restablecer` (PBI-01); se envía en claro por correo, solo se guarda su SHA-256 |
 | `salas` | `id`, `juego` (`guinote`/`mus`/`tute`), `estado` (`esperando`/`en_curso`/`finalizada`), `capacidad` (2 o 4), `creador_id` → `usuarios.id`, `nombre` (1-40 caracteres, por defecto "Sala de Guiñote"), `password_hash` (nullable; bcrypt del SHA-256 que envía el cliente, igual que `usuarios.password_hash`), `fecha_creacion` | |
 | `sala_participantes` | `sala_id`, `usuario_id`, `posicion` (0-3 a 4 jugadores, 0-1 a 2), `equipo` (0/1; con pareja a 4, cada jugador el suyo a 2 — `equipo_de(posicion) = posicion % 2`, igual en Guiñote y Mus) | Tabla puente |
-| `partidas` | `id`, `sala_id`, `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json` | Registro histórico de una partida ya terminada |
-| `partida_jugadores` | `partida_id`, `usuario_id`, `equipo`, `puntos_obtenidos`, `gano` (booleano) | Base para historial (PBI-06) y ranking (PBI-07) |
+| `partidas` | `id`, `sala_id` (único), `juego`, `fecha_inicio`, `fecha_fin`, `resultado_json`, `causa` (`completa` por defecto) | Registro histórico de una partida ya terminada. Una sala aloja una sola partida: el índice único sobre `sala_id` impide registrarla dos veces si el servidor de partida reintenta (§5). `fecha_inicio` y `fecha_fin` son las reales, las que manda el servidor de partida. `causa` es por qué terminó (`completa` o `renuncio`); la lista válida la mantiene el backend, no un CHECK |
+| `partida_jugadores` | `partida_id`, `usuario_id`, `posicion` (nullable), `equipo`, `puntos_obtenidos`, `gano` (booleano) | Base para historial (PBI-06) y ranking (PBI-07). `posicion` es el asiento en la mesa (0-3), para listar compañero y rivales en orden; queda vacía en las partidas registradas antes de PBI-06 |
+
+Índices de PBI-06 (`backend/migrations/005_historial_estadisticas.sql`): `partidas_sala_unica`, único, sobre `partidas(sala_id)`; `idx_partida_jugadores_usuario` sobre `partida_jugadores(usuario_id)` (las partidas de un usuario), e `idx_partidas_fecha_fin` sobre `partidas(fecha_fin DESC)` (el orden del historial).
+
+El **historial y las estadísticas** (PBI-06) salen de `partidas` + `partida_jugadores` cada vez que se piden: no se guardan en una tabla aparte.
 
 El **ranking** (PBI-07) se calcula agregando `partida_jugadores` — no hace falta tabla propia salvo que el rendimiento lo justifique más adelante.
 
@@ -114,19 +118,86 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 
 `servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve tanto al crear la sala como al unirse a ella, para que cualquiera de los dos pueda conectar. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
-### Historial y ranking (PBI-06, PBI-07)
+### Historial, estadísticas y privacidad (PBI-06)
+
+Todas exigen `Authorization: Bearer <token>`. En las rutas con `:id`, `me` es un alias del usuario del token; cualquier otro valor tiene que ser un UUID.
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/usuarios/:id/historial?juego=&limite=` | — | `200 [{ partida_id, sala_id, juego, num_jugadores, fecha_inicio, fecha_fin, resultado, gano, causa, motivo, equipo, puntos_equipo, puntos_rival, companeros, rivales }]` — las partidas terminadas del usuario, de la más reciente a la más antigua |
+| GET | `/usuarios/:id/estadisticas` | — | `200 { usuario_id, nombre_visible, historial_publico, totales, por_juego, racha_actual, mejor_racha_victorias, ultimos_resultados }` |
+| GET | `/usuarios/me/privacidad` | — | `200 { historial_publico }` |
+| PUT | `/usuarios/me/privacidad` | `{ historial_publico }` (booleano) | `200 { historial_publico }` |
+
+En el historial, `juego` (opcional: `guinote`, `mus` o `tute`) filtra por juego y `limite` (opcional, entero de 1 a 500, 100 por defecto) es el máximo de partidas que se devuelven.
+
+| Código | Cuándo | `error` |
+|---|---|---|
+| `400` | `:id` no es `me` ni un UUID | `id de usuario no válido` |
+| `400` | `juego` no es uno de los tres | `juego no válido, valores admitidos: guinote, mus, tute` |
+| `400` | `limite` no es un entero de 1 a 500 | `limite no válido (entero de 1 a 500)` |
+| `400` | `historial_publico` no es un booleano (`PUT`) | `historial_publico tiene que ser true o false` |
+| `401` | Sin token o con un token inválido | `no autenticado` / `token inválido` |
+| `403` | El historial es privado y quien lo pide no es su titular | `este historial es privado` |
+| `404` | El usuario consultado no existe | `el usuario no existe` |
+
+**Quién puede ver qué (privacidad).** El historial es público por defecto (`usuarios.historial_publico = true`). Su titular puede hacerlo privado, o volver a hacerlo público, con `PUT /usuarios/me/privacidad`; la privacidad solo se consulta y se cambia sobre uno mismo. Con el historial privado, solo el titular ve su historial y sus estadísticas: a cualquier otro usuario las dos rutas le responden `403`. El titular siempre ve los suyos. Las dos rutas comprueban el acceso igual (en `historialService.js`): primero que el usuario exista (`404`) y después, si no es quien pregunta, que su historial sea público (`403`).
+
+**Cada partida del historial**, vista desde el usuario consultado:
+- Orden: `fecha_fin` descendente; a igual fecha, `partida_id` descendente.
+- `num_jugadores` es 2 o 4: junto con `juego` da la modalidad (1 contra 1 o por parejas).
+- `fecha_inicio` y `fecha_fin`: ISO 8601 en UTC, las reales de la partida (las manda el servidor de partida al registrarla, ver Interno).
+- `resultado`: `"victoria"` si `gano`, si no `"derrota"`.
+- `causa`: por qué terminó (`completa` o `renuncio`, ver Interno). `motivo`: cómo se ganó, sacado de `resultado_json.motivo` (Guiñote y Tute: `tute`, `tantos`, `vuelta` o `capote`; Mus: `null`).
+- `equipo` es el del usuario (0 o 1). `puntos_equipo` son sus `puntos_obtenidos` y `puntos_rival`, los del otro equipo (0 si no hay). En el Mus son juegos ganados; en Guiñote y Tute, tantos.
+- `companeros` y `rivales`: `[{ usuario_id, nombre_visible, posicion }]`, ordenados por posición. `companeros` son los demás de su equipo (vacío a 2 jugadores); `rivales`, los del otro equipo.
+
+**Estadísticas.** Se calculan al pedirlas, a partir de las mismas partidas y en el mismo orden que el historial:
+- `totales` y cada entrada de `por_juego`: `{ jugadas, victorias, derrotas, porcentaje_victorias }` (en `por_juego`, además, `juego`). `por_juego` trae siempre los tres juegos, en el orden `guinote`, `mus`, `tute`, aunque sea con ceros.
+- `porcentaje_victorias` va redondeado a 1 decimal; 0 si no hay partidas.
+- `racha_actual`: `{ tipo, partidas }`, los resultados iguales seguidos contando desde la partida más reciente (`tipo` = `"victoria"` o `"derrota"`); `{ tipo: null, partidas: 0 }` si no hay partidas.
+- `mejor_racha_victorias`: la serie más larga de victorias seguidas, en orden cronológico.
+- `ultimos_resultados`: hasta 10 `"victoria"`/`"derrota"`, del más reciente al más antiguo.
+
+**De dónde sale este contrato.** Se han unido los criterios de aceptación de PBI-06 en Jira y las historias del backlog del TFG (HU-016, HU-037). Donde una fuente pide algo que la otra no, se suma: las estadísticas solo las pide Jira y la privacidad solo el backlog.
+
+| Fuente | Qué pide | Cómo queda |
+|---|---|---|
+| Jira CA1 | `GET /users/me/history` con JWT | `GET /usuarios/me/historial`: rutas en español, como el resto de la API, y `me` = el usuario del token |
+| Jira CA2 | Fecha y hora, modalidad, victoria/derrota, puntuación, rivales y compañero | `fecha_inicio`, `fecha_fin`, `juego`, `num_jugadores`, `resultado`, `puntos_equipo`, `puntos_rival`, `companeros`, `rivales` |
+| Jira CA3 | Guardar en la base de datos lo que manda el servidor de partida | `POST /interno/partidas` idempotente, con `posicion`, `causa` y las fechas reales; el servidor de partida reintenta (ver Interno) |
+| Jira CA4 | Pantalla de historial desde el menú principal, en orden cronológico | Botón "Historial" del lobby, que es el menú tras el login → `client/ui/historial/` |
+| Jira, título y descripción | Estadísticas de rendimiento, resultados y progresión | `GET /usuarios/:id/estadisticas`: totales, por juego, % de victorias, rachas y últimos 10 resultados |
+| HU-037 CA-136 | Juego, fecha de fin, marcador de los dos equipos, causa de fin y victoria/derrota, de la más reciente a la más antigua | Los mismos campos, más `motivo`; orden por `fecha_fin` descendente |
+| HU-037 CA-137/138 | Historial público por defecto; su titular puede hacerlo privado, y entonces solo lo ve él | `usuarios.historial_publico`, `/usuarios/me/privacidad` y `403` para los demás |
+| HU-016 CA-059/060/061 | Registrar sala, juego, participantes, ganador y marcador; una victoria anticipada conserva el marcador parcial y la causa | `partidas.causa`; la victoria anticipada con marcador parcial llega con el renuncio del chat (PBI-08) |
+
+### Ranking (PBI-07)
 | Método | Ruta | Respuesta |
 |---|---|---|
-| GET | `/usuarios/:id/historial` | `200 [{ partida_id, juego, fecha, resultado, gano }]` |
 | GET | `/ranking?juego=guinote` | `200 [{ usuario_id, nombre_visible, puntos_totales, posicion }]` |
 
 ### Interno (solo lo llama el servidor de partida, con secreto compartido servidor-a-servidor, nunca el cliente)
 | Método | Ruta | Cabecera | Body |
 |---|---|---|---|
 | GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
-| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, ... } }` |
+| POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, causa, ... }, fecha_inicio, fecha_fin }` |
 
-En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) y `equipo` es `posicion % 2`; con eso el backend rellena `partidas` (+ `resultado_json`) y `partida_jugadores` (`gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o `404` si la sala no existe. Si el backend no responde, el servidor de partida registra el error en su log; de momento no reintenta.
+En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) más `causa`, y `equipo` es `posicion % 2`. En una transacción que bloquea la sala (`SELECT ... FOR UPDATE`), el backend rellena `partidas` (`fecha_inicio`, `fecha_fin`, `causa` y el `resultado` entero en `resultado_json`) y `partida_jugadores` (`posicion`, `equipo`, `gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o algún jugador no tiene cuenta, `404` si la sala no existe o `409 { error: "la partida de esta sala ya está registrada" }`.
+
+Validación del body (`400 { error }` antes de tocar la base de datos):
+- `sala_id`: UUID.
+- `jugadores`: array no vacío, sin `usuario_id` ni posiciones repetidos (`"un jugador aparece más de una vez"` / `"dos jugadores en la misma posicion"`). Cada `usuario_id` es un UUID, `posicion` un entero de 0 a 3 y `equipo` un entero, 0 o 1.
+- `resultado`: objeto con `equipo_ganador` 0 o 1. `puntos_por_equipo`, si viene, son 2 enteros ≥ 0. `causa`, si viene, es `completa` o `renuncio`; si no viene, `completa`. Ningún texto de `resultado`, ni ninguna clave, puede llevar el carácter nulo (`\u0000`) ni UTF-16 mal formado, porque `resultado_json` es JSONB y PostgreSQL no los admite.
+- `fecha_inicio` y `fecha_fin`: opcionales, en ISO 8601 con fecha, hora y zona horaria (`Z` o `±hh:mm`), p. ej. `2026-11-18T10:24:13Z`, y con el año, ya pasado a UTC, entre 1 y 9999; se guardan en UTC. Si vienen las dos, `fecha_inicio` no puede ser posterior a `fecha_fin`. Sin `fecha_fin` se usa la hora del backend al registrar (`now()`), y sin `fecha_inicio`, la misma que `fecha_fin`.
+
+Además, si algún `usuario_id` tiene forma de UUID pero no corresponde a ninguna cuenta, el backend responde `400 { error: "algún jugador no existe" }`. Este 400 no sale de la validación del body, sino de la clave foránea de `partida_jugadores` (código `23503` de PostgreSQL), ya dentro de la transacción, que se deshace entera (`ROLLBACK`). Como es un 4xx, el servidor de partida no lo reintenta (ver "Registro desde el servidor de partida").
+
+**Causa.** `causa` dice por qué terminó la partida: `completa` (se jugó hasta el final) o `renuncio` (renuncio admitido en el chat, PBI-08). La lista válida es la constante `CAUSAS` de `internoService.js`, no un CHECK de la base de datos: cuando se implemente la derrota por desconexión (HU-013), añadir `desconexion` será tocar esa constante, sin migración.
+
+**Idempotencia.** Una sala aloja una sola partida: si ya hay una fila en `partidas` con ese `sala_id`, el backend responde `409` sin escribir nada. Así un reintento del servidor de partida no duplica el resultado. Se comprueba dentro de la transacción; si aun así llegan a la vez dos registros de la misma sala, el índice único `partidas(sala_id)` hace fallar al segundo (código `23505` de PostgreSQL), y se responde el mismo `409`.
+
+**Registro desde el servidor de partida.** Al terminar una partida, `RoomManager` añade `causa` al resultado del motor antes de mandar `partida_terminada`, así el cliente y el backend ven lo mismo. Tras avisar a los jugadores, registra `{ sala_id, jugadores, resultado, fecha_inicio, fecha_fin }`, con las fechas en ISO 8601 UTC: `fecha_inicio` es cuando empezó la partida (al conectarse todos) y `fecha_fin`, cuando terminó. Si el backend no contesta (código 0) o devuelve un 5xx, lo reintenta, hasta 3 intentos (`INTENTOS_REGISTRO`) con 2 s entre uno y otro. Un `409` quiere decir que ya estaba registrada y se da por bueno. Cualquier otro 4xx es un body que el backend no acepta: se escribe en el log (`push_error`) y no se reintenta, porque volvería a fallar igual. Si se agotan los intentos, también queda en el log con el código, y esa partida no llega al historial.
 
 `GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo, nombre_visible }] }` o `404` si la sala no existe (`nombre_visible` es para que la mesa rotule a cada jugador). La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
@@ -136,7 +207,9 @@ El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X
 
 ## 6. Protocolo en tiempo real (cliente ↔ servidor de partida)
 
-Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por un único RPC del autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
+Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por el autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
+
+**Canales de ENet (PBI-08).** Por dentro, `CanalRed` tiene dos RPC fiables, uno por canal de ENet, que acaban en la misma señal `mensaje_recibido`. El chat (`chat_enviar`, `chat_mensaje` y `chat_historial`, la lista `MensajesRed.TIPOS_CHAT`) va por el canal 1 (`CanalRed.CANAL_CHAT`), y todo lo demás por el canal 0; `CanalRed.canal_de(mensaje)` dice cuál le toca a cada mensaje, y quien envía o recibe no tiene que saberlo. El motivo: los mensajes fiables de un mismo canal se entregan en orden, así que si el chat fuera por el de las jugadas, un mensaje largo podría retrasar un `estado_partida`. Las denuncias del chat (`denunciar_chat`, `admitir_denuncia`, `no_admitir_denuncia` y `denuncia_chat`) van por el canal 0, con las jugadas: pausan y reanudan la partida, y así llegan en orden con el `estado_partida` o el `partida_terminada` que las sigue. `ENetMultiplayerPeer` se crea con el número de canales por defecto (`0`, el máximo que admite ENet), así que ni `main_server.gd` ni `cliente_red.gd` tienen que configurar nada para el canal del chat.
 
 **Cliente → Servidor**
 
@@ -154,7 +227,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `envidar` | `{ cantidad }` (piedras, de 2 a 10) | Mus: envidar o, ante un envite rival, subirlo en `cantidad` |
 | `ordago` | — | Mus: envidar el juego entero, o subir a órdago un envite rival |
 | `quiero` / `no_quiero` | — | Mus: contestar a un envite u órdago rival |
-| `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
+| `chat_enviar` | `{ mensaje }` | PBI-08: estando en una sala, antes, durante y después de la partida (ver "Chat de la partida") |
+| `denunciar_chat` | `{ mensaje_id }` | PBI-08: un rival de quien escribió el mensaje, con la partida en juego (ver "Denuncias del chat") |
+| `admitir_denuncia` / `no_admitir_denuncia` | — | PBI-08: cualquiera de la parte denunciada, con una denuncia pendiente |
 
 **Servidor → Cliente**
 
@@ -162,8 +237,10 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 |---|---|---|
 | `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
 | `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` + `tiempos_para_decidir` | Tras cada acción válida |
-| `partida_terminada` | `{ resultado }` | Al finalizar |
-| `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
+| `partida_terminada` | `{ resultado }` — lo que da `calcular_resultado` (§7) más `causa` (`completa` o `renuncio`, §5 Interno) | Al finalizar |
+| `chat_mensaje` | `{ id, usuario_id, posicion, equipo, nombre, mensaje, durante_partida }` | PBI-08: a todos los de la sala (también a quien lo escribió) al recibir un `chat_enviar` válido |
+| `chat_historial` | `{ mensajes: [chat_mensaje…] }` | PBI-08: a quien se une o se reconecta a la sala |
+| `denuncia_chat` | `{ estado, mensaje_id, mensaje, denunciante, denunciado, equipo_denunciado, segundos, respondido_por }` | PBI-08: a todos los de la sala, cuando una denuncia empieza (`pendiente`) y cuando se resuelve (`admitida`, `no_admitida` o `caducada`) |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
 
 **Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
@@ -177,6 +254,32 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 **Pantalla de partida (PBI-12):** los tres juegos, a 2 y a 4 jugadores, se juegan en la misma mesa del cliente (`game/client/ui/mesa/`): mismas cartas, etiquetas, letreros y botones. La mesa solo pinta el `estado_partida` y deja hacer lo que viene en `jugadas_validas`.
 
 **Tiempo límite para decidir (PBI-14):** cada `estado_partida` incluye `tiempos_para_decidir`, `[{ posicion, segundos, ausente }]` con lo que le queda a cada jugador del que depende que la partida avance (por defecto 45 s, variable `SEGUNDOS_POR_TURNO` del servidor; `0` lo desactiva). Cantar, cambiar el siete y anunciar capote no ponen cuenta atrás. Si a alguien se le acaba el tiempo, esté o no conectado, el servidor juega por él la jugada que elige el motor (`jugada_por_tiempo`: una carta permitida o no cambiar el siete en el Guiñote y el Tute; cortar mus, pasar o no querer en el Mus) y le avisa con un `error` "Se te ha acabado el tiempo: se ha jugado por ti.". **Modo ausente:** si se le acaba el tiempo 2 veces seguidas, se le da por ausente y el servidor juega por él a los 2 s en vez de a los 45, hasta que vuelva a jugar él (`ausente: true` en su entrada de `tiempos_para_decidir`). Así nadie se queda atascado porque otro se haya ido, y una partida con un ausente no se alarga.
+
+**Chat de la partida (PBI-08).** Cada sala tiene su chat en el servidor de partida (`ChatSala`, `game/server/chat_sala.gd`):
+- **Aislado por sala.** Un `chat_mensaje` solo llega a los peers de esa sala, y quién lo dice (`usuario_id`, `nombre`, `posicion`, `equipo`) lo pone el servidor a partir de la conexión, nunca del payload. El cliente lo pinta con la etiqueta del asiento ("J2 · Luis") y el color de su pareja, los mismos de su etiqueta en la mesa.
+- **Mensajes válidos.** Un texto de 1 a 500 caracteres una vez limpio (los caracteres de control pasan a ser espacios y se quitan los de los extremos). Si no, `error`: `"El mensaje de chat tiene que ser un texto"`, `"No puedes enviar un mensaje vacío"` o `"El mensaje no puede pasar de 500 caracteres"`. No hay límite de frecuencia. `id` es un entero que crece desde 1 en cada sala, y `durante_partida` dice si se escribió con la partida en juego.
+- **No toca la partida.** El servidor lo atiende al momento, sin pasar por el motor ni cambiar el estado ni los relojes, y viaja por su propio canal de ENet (ver "Canales de ENet").
+- **Se conserva mientras dura la sala.** Al unirse o reconectarse, cada jugador recibe `chat_historial` con todos los mensajes. Cuando la partida termina, los jugadores siguen en la sala solo para chatear (una jugada responde `"La partida ha terminado"` y nadie más puede unirse); cuando se desconecta el último, la sala y su chat se borran. Por seguridad se guardan como mucho los 500 últimos mensajes, muy por encima de lo que se escribe en una partida.
+
+**Denuncias del chat (PBI-08).** Revelar las cartas propias o hacer señas por el chat, faroles del Mus incluidos, es renuncio (§8). Lo denuncia la parte perjudicada y lo admite, o no, la parte denunciada:
+- **Quién denuncia qué.** Un rival de quien escribió el mensaje (en el Mus a 2, el otro jugador) envía `denunciar_chat { mensaje_id }`. Solo vale para mensajes escritos durante la partida, con la partida en juego, sin otra denuncia pendiente, y una sola vez por mensaje. Si no, `error`: `"Solo se pueden denunciar mensajes mientras se juega la partida"`, `"Ya hay una denuncia pendiente: espera a que se resuelva"`, `"Ese mensaje no existe"`, `"Ese mensaje se escribió antes de empezar la partida"`, `"Solo pueden denunciar un mensaje los rivales de quien lo escribió"` o `"Ese mensaje ya se ha denunciado"`. Un rechazo no pausa nada.
+- **Pausa.** Admitida la denuncia, todos reciben `denuncia_chat` con `estado: "pendiente"` y `segundos: 60`. Mientras dura, nadie juega (`error` `"La partida está en pausa: hay una denuncia de chat pendiente"`) y los relojes para decidir de PBI-14 no corren: al reanudar, a cada uno le queda lo mismo que cuando empezó la pausa. El chat sigue funcionando. Quien se reconecta en pausa recibe la denuncia con los segundos que quedan.
+- **Respuesta.** Cualquiera de la parte denunciada (el autor o su compañero) envía `admitir_denuncia` o `no_admitir_denuncia`; vale la primera respuesta. Nadie más puede responder (`"Solo puede responder la parte denunciada"`; sin denuncia, `"No hay ninguna denuncia pendiente"`).
+  - **Admitida:** todos reciben `denuncia_chat` `admitida` y después `partida_terminada`, con `resultado.causa = "renuncio"`, `equipo_ganador` = la parte perjudicada y el marcador que llevaba cada equipo en ese momento (`MotorDeJuego.resultado_anticipado`, §7). Se registra en el backend como cualquier otra partida (§5 Interno).
+  - **No admitida** (o sin respuesta en 60 s, `caducada`): todos reciben `denuncia_chat` y un `estado_partida` nuevo, y se sigue jugando donde estaba. El mismo mensaje ya no se puede volver a denunciar.
+- **Decisión propia.** El backlog solo dice que, si pasa el minuto sin admitirla, se reanuda; `no_admitir_denuncia` permite contestar que no antes y no tener a todos esperando.
+
+**De dónde sale este contrato.** Se han unido los criterios de PBI-08 en Jira con las historias HU-035 y HU-036 del backlog del TFG:
+
+| Fuente | Qué pide | Cómo queda |
+|---|---|---|
+| Jira CA1 | Canal aislado por sala | El servidor solo reenvía a los peers de esa sala |
+| Jira CA2 | RPC sobre ENet, entrega inmediata sin bloquear la lógica de cartas | Canal de ENet propio para el chat; el servidor lo atiende sin tocar el motor |
+| Jira CA3 | Historial desplazable y `LineEdit` con Enter o botón | Caja de chat de la mesa (`game/client/ui/mesa/chat_mesa.gd`) |
+| Jira CA4 | Nombre del remitente y su color en la mesa | "J2 · Luis" con el color de su pareja, el de su etiqueta |
+| HU-035 CA-129/130/131 | Hasta 500 caracteres, sin límite de frecuencia; los mensajes siguen tras reconectar; se borran cuando todos han vuelto al lobby | Validación en el servidor, `chat_historial`, sala conservada solo para el chat hasta que se va el último |
+| HU-035 T-087 | Política de no revelar cartas ni hacer señas | Aviso fijo en la caja de chat |
+| HU-036 CA-132..135 | Denunciar, pausa de hasta un minuto, victoria si se admite, sin repetir denuncias | `denunciar_chat`, `admitir_denuncia`, `no_admitir_denuncia`, `denuncia_chat`; `causa: "renuncio"` en el historial (PBI-06) |
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 
@@ -213,7 +316,10 @@ func aplicar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) 
 @abstract func ha_terminado(estado: EstadoPartida) -> bool
 
 @abstract func calcular_resultado(estado: EstadoPartida) -> Dictionary
-    # { equipo_ganador: int, puntos_por_equipo: Array[int] } + lo que cada juego quiera añadir
+    # { equipo_ganador: int, puntos_por_equipo: Array[int] } + lo que cada juego quiera añadir; sirve también a mitad de partida
+
+func resultado_anticipado(estado: EstadoPartida, equipo_ganador: int) -> Dictionary
+    # PBI-08: calcular_resultado con el ganador que se decide fuera del motor (renuncio admitido en el chat)
 
 @abstract func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary
     # oculta las cartas de los demás antes de enviar al cliente
@@ -284,7 +390,7 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 
 **Fin de partido (encuentro).** El reglamento oficial encadena varias partidas dentro de un mismo encuentro hasta que una pareja gane el número de partidas acordado. **Decisión de equipo (reformulada tras esta corrección): el encuentro implementado consta de una única partida** — ganarla (por Tute o por tantos, con el desempate de arriba) termina el encuentro completo en la aplicación. *(Esto sustituye a la redacción anterior de este documento, "se juega a una sola mano": ese término no corresponde a ningún concepto real del reglamento — la unidad correcta es la partida, no la "mano".)*
 
-**Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — no aplica directamente aquí porque el cliente no ofrece ningún canal de voz o chat libre entre compañeros durante la jugada; si en el futuro PBI-08 añadiera chat de equipo también durante la partida en curso, habría que revisar si conviene restringirlo por este motivo.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
+**Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — online se resuelve con el chat de la partida (PBI-08, §6): el chat es común a toda la mesa, no hay canal privado entre compañeros, y revelar cartas o hacer señas por él es renuncio que la pareja rival puede denunciar; si la pareja denunciada lo admite, pierde la partida.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
 
 **Notas de implementación (`game/server/game_engine/guinote/`).** Cómo se traduce lo anterior al motor:
 - **Asientos y sentido de juego:** los asientos se numeran en el orden en que se juega (antihorario). "A la derecha" de `p` es `(p + 1) % 4` y "a la izquierda", `(p + 3) % 4`; las parejas quedan 0-2 contra 1-3, como en §7.
@@ -445,7 +551,7 @@ Basado en las reglas oficiales aportadas por el equipo. A diferencia de Guiñote
 4. El cliente conecta por ENet y envía `unirse_partida { usuario_id, token, sala_id }`. El servidor verifica el token y pide la sala al backend (`GET /interno/salas/:id`).
 5. El servidor de partida inicia la partida usando el motor genérico (§7) + el módulo del juego correspondiente, y empieza a intercambiar `jugar_carta` / `estado_partida`.
 6. Al terminar, el servidor de partida llama a `POST /interno/partidas` para persistir el resultado.
-7. El cliente recibe `partida_terminada` y puede volver al lobby o consultar el historial (`GET /usuarios/:id/historial`).
+7. El cliente recibe `partida_terminada` y vuelve al lobby. Desde el botón "Historial" del lobby consulta sus partidas y sus estadísticas (`GET /usuarios/me/historial`, `GET /usuarios/me/estadisticas`) y decide si su historial es público (`PUT /usuarios/me/privacidad`).
 
 ---
 
