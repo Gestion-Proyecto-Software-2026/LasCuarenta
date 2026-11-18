@@ -207,7 +207,9 @@ El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X
 
 ## 6. Protocolo en tiempo real (cliente ↔ servidor de partida)
 
-Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por un único RPC del autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
+Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es un diccionario, aunque esté vacío). Todos viajan por el autoload `CanalRed` (`game/shared/canal_red.gd`), que existe con la misma ruta en cliente y servidor: `CanalRed.enviar(peer_id, mensaje)` para enviar y la señal `CanalRed.mensaje_recibido(peer_id, mensaje)` para recibir. Los nombres de los mensajes están en `MensajesRed` (`game/shared/mensajes_red.gd`). El cliente envía siempre al peer `1` (el servidor) y debe ignorar lo que venga de cualquier otro peer.
+
+**Canales de ENet (PBI-08).** Por dentro, `CanalRed` tiene dos RPC fiables, uno por canal de ENet, que acaban en la misma señal `mensaje_recibido`. El chat (`chat_enviar`, `chat_mensaje` y `chat_historial`, la lista `MensajesRed.TIPOS_CHAT`) va por el canal 1 (`CanalRed.CANAL_CHAT`), y todo lo demás por el canal 0; `CanalRed.canal_de(mensaje)` dice cuál le toca a cada mensaje, y quien envía o recibe no tiene que saberlo. El motivo: los mensajes fiables de un mismo canal se entregan en orden, así que si el chat fuera por el de las jugadas, un mensaje largo podría retrasar un `estado_partida`. Las denuncias del chat (`denunciar_chat`, `admitir_denuncia`, `no_admitir_denuncia` y `denuncia_chat`) van por el canal 0, con las jugadas: pausan y reanudan la partida, y así llegan en orden con el `estado_partida` o el `partida_terminada` que las sigue. `ENetMultiplayerPeer` se crea con el número de canales por defecto (`0`, el máximo que admite ENet), así que ni `main_server.gd` ni `cliente_red.gd` tienen que configurar nada para el canal del chat.
 
 **Cliente → Servidor**
 
@@ -225,7 +227,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `envidar` | `{ cantidad }` (piedras, de 2 a 10) | Mus: envidar o, ante un envite rival, subirlo en `cantidad` |
 | `ordago` | — | Mus: envidar el juego entero, o subir a órdago un envite rival |
 | `quiero` / `no_quiero` | — | Mus: contestar a un envite u órdago rival |
-| `chat_enviar` | `{ mensaje }` | PBI-08, en cualquier momento de la partida |
+| `chat_enviar` | `{ mensaje }` | PBI-08: estando en una sala, antes, durante y después de la partida (ver "Chat de la partida") |
+| `denunciar_chat` | `{ mensaje_id }` | PBI-08: un rival de quien escribió el mensaje, con la partida en juego (ver "Denuncias del chat") |
+| `admitir_denuncia` / `no_admitir_denuncia` | — | PBI-08: cualquiera de la parte denunciada, con una denuncia pendiente |
 
 **Servidor → Cliente**
 
@@ -234,7 +238,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
 | `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` + `tiempos_para_decidir` | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` — lo que da `calcular_resultado` (§7) más `causa` (`completa` o `renuncio`, §5 Interno) | Al finalizar |
-| `chat_mensaje` | `{ usuario_id, mensaje }` | PBI-08, al recibir un `chat_enviar` válido de cualquier jugador de la sala |
+| `chat_mensaje` | `{ id, usuario_id, posicion, equipo, nombre, mensaje, durante_partida }` | PBI-08: a todos los de la sala (también a quien lo escribió) al recibir un `chat_enviar` válido |
+| `chat_historial` | `{ mensajes: [chat_mensaje…] }` | PBI-08: a quien se une o se reconecta a la sala |
+| `denuncia_chat` | `{ estado, mensaje_id, mensaje, denunciante, denunciado, equipo_denunciado, segundos, respondido_por }` | PBI-08: a todos los de la sala, cuando una denuncia empieza (`pendiente`) y cuando se resuelve (`admitida`, `no_admitida` o `caducada`) |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
 
 **Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
@@ -248,6 +254,32 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 **Pantalla de partida (PBI-12):** los tres juegos, a 2 y a 4 jugadores, se juegan en la misma mesa del cliente (`game/client/ui/mesa/`): mismas cartas, etiquetas, letreros y botones. La mesa solo pinta el `estado_partida` y deja hacer lo que viene en `jugadas_validas`.
 
 **Tiempo límite para decidir (PBI-14):** cada `estado_partida` incluye `tiempos_para_decidir`, `[{ posicion, segundos, ausente }]` con lo que le queda a cada jugador del que depende que la partida avance (por defecto 45 s, variable `SEGUNDOS_POR_TURNO` del servidor; `0` lo desactiva). Cantar, cambiar el siete y anunciar capote no ponen cuenta atrás. Si a alguien se le acaba el tiempo, esté o no conectado, el servidor juega por él la jugada que elige el motor (`jugada_por_tiempo`: una carta permitida o no cambiar el siete en el Guiñote y el Tute; cortar mus, pasar o no querer en el Mus) y le avisa con un `error` "Se te ha acabado el tiempo: se ha jugado por ti.". **Modo ausente:** si se le acaba el tiempo 2 veces seguidas, se le da por ausente y el servidor juega por él a los 2 s en vez de a los 45, hasta que vuelva a jugar él (`ausente: true` en su entrada de `tiempos_para_decidir`). Así nadie se queda atascado porque otro se haya ido, y una partida con un ausente no se alarga.
+
+**Chat de la partida (PBI-08).** Cada sala tiene su chat en el servidor de partida (`ChatSala`, `game/server/chat_sala.gd`):
+- **Aislado por sala.** Un `chat_mensaje` solo llega a los peers de esa sala, y quién lo dice (`usuario_id`, `nombre`, `posicion`, `equipo`) lo pone el servidor a partir de la conexión, nunca del payload. El cliente lo pinta con la etiqueta del asiento ("J2 · Luis") y el color de su pareja, los mismos de su etiqueta en la mesa.
+- **Mensajes válidos.** Un texto de 1 a 500 caracteres una vez limpio (los caracteres de control pasan a ser espacios y se quitan los de los extremos). Si no, `error`: `"El mensaje de chat tiene que ser un texto"`, `"No puedes enviar un mensaje vacío"` o `"El mensaje no puede pasar de 500 caracteres"`. No hay límite de frecuencia. `id` es un entero que crece desde 1 en cada sala, y `durante_partida` dice si se escribió con la partida en juego.
+- **No toca la partida.** El servidor lo atiende al momento, sin pasar por el motor ni cambiar el estado ni los relojes, y viaja por su propio canal de ENet (ver "Canales de ENet").
+- **Se conserva mientras dura la sala.** Al unirse o reconectarse, cada jugador recibe `chat_historial` con todos los mensajes. Cuando la partida termina, los jugadores siguen en la sala solo para chatear (una jugada responde `"La partida ha terminado"` y nadie más puede unirse); cuando se desconecta el último, la sala y su chat se borran. Por seguridad se guardan como mucho los 500 últimos mensajes, muy por encima de lo que se escribe en una partida.
+
+**Denuncias del chat (PBI-08).** Revelar las cartas propias o hacer señas por el chat, faroles del Mus incluidos, es renuncio (§8). Lo denuncia la parte perjudicada y lo admite, o no, la parte denunciada:
+- **Quién denuncia qué.** Un rival de quien escribió el mensaje (en el Mus a 2, el otro jugador) envía `denunciar_chat { mensaje_id }`. Solo vale para mensajes escritos durante la partida, con la partida en juego, sin otra denuncia pendiente, y una sola vez por mensaje. Si no, `error`: `"Solo se pueden denunciar mensajes mientras se juega la partida"`, `"Ya hay una denuncia pendiente: espera a que se resuelva"`, `"Ese mensaje no existe"`, `"Ese mensaje se escribió antes de empezar la partida"`, `"Solo pueden denunciar un mensaje los rivales de quien lo escribió"` o `"Ese mensaje ya se ha denunciado"`. Un rechazo no pausa nada.
+- **Pausa.** Admitida la denuncia, todos reciben `denuncia_chat` con `estado: "pendiente"` y `segundos: 60`. Mientras dura, nadie juega (`error` `"La partida está en pausa: hay una denuncia de chat pendiente"`) y los relojes para decidir de PBI-14 no corren: al reanudar, a cada uno le queda lo mismo que cuando empezó la pausa. El chat sigue funcionando. Quien se reconecta en pausa recibe la denuncia con los segundos que quedan.
+- **Respuesta.** Cualquiera de la parte denunciada (el autor o su compañero) envía `admitir_denuncia` o `no_admitir_denuncia`; vale la primera respuesta. Nadie más puede responder (`"Solo puede responder la parte denunciada"`; sin denuncia, `"No hay ninguna denuncia pendiente"`).
+  - **Admitida:** todos reciben `denuncia_chat` `admitida` y después `partida_terminada`, con `resultado.causa = "renuncio"`, `equipo_ganador` = la parte perjudicada y el marcador que llevaba cada equipo en ese momento (`MotorDeJuego.resultado_anticipado`, §7). Se registra en el backend como cualquier otra partida (§5 Interno).
+  - **No admitida** (o sin respuesta en 60 s, `caducada`): todos reciben `denuncia_chat` y un `estado_partida` nuevo, y se sigue jugando donde estaba. El mismo mensaje ya no se puede volver a denunciar.
+- **Decisión propia.** El backlog solo dice que, si pasa el minuto sin admitirla, se reanuda; `no_admitir_denuncia` permite contestar que no antes y no tener a todos esperando.
+
+**De dónde sale este contrato.** Se han unido los criterios de PBI-08 en Jira con las historias HU-035 y HU-036 del backlog del TFG:
+
+| Fuente | Qué pide | Cómo queda |
+|---|---|---|
+| Jira CA1 | Canal aislado por sala | El servidor solo reenvía a los peers de esa sala |
+| Jira CA2 | RPC sobre ENet, entrega inmediata sin bloquear la lógica de cartas | Canal de ENet propio para el chat; el servidor lo atiende sin tocar el motor |
+| Jira CA3 | Historial desplazable y `LineEdit` con Enter o botón | Caja de chat de la mesa (`game/client/ui/mesa/chat_mesa.gd`) |
+| Jira CA4 | Nombre del remitente y su color en la mesa | "J2 · Luis" con el color de su pareja, el de su etiqueta |
+| HU-035 CA-129/130/131 | Hasta 500 caracteres, sin límite de frecuencia; los mensajes siguen tras reconectar; se borran cuando todos han vuelto al lobby | Validación en el servidor, `chat_historial`, sala conservada solo para el chat hasta que se va el último |
+| HU-035 T-087 | Política de no revelar cartas ni hacer señas | Aviso fijo en la caja de chat |
+| HU-036 CA-132..135 | Denunciar, pausa de hasta un minuto, victoria si se admite, sin repetir denuncias | `denunciar_chat`, `admitir_denuncia`, `no_admitir_denuncia`, `denuncia_chat`; `causa: "renuncio"` en el historial (PBI-06) |
 
 **Errores y expulsión:** el servidor responde `error { mensaje }` a cualquier mensaje que no pueda atender, con un texto pensado para mostrarse al jugador. Si el problema impide seguir (token no válido, sala inexistente o terminada, usuario que no es de la sala, juego no disponible), además cierra la conexión un segundo después, para que el cliente llegue a recibir el `error`.
 
@@ -284,7 +316,10 @@ func aplicar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) 
 @abstract func ha_terminado(estado: EstadoPartida) -> bool
 
 @abstract func calcular_resultado(estado: EstadoPartida) -> Dictionary
-    # { equipo_ganador: int, puntos_por_equipo: Array[int] } + lo que cada juego quiera añadir
+    # { equipo_ganador: int, puntos_por_equipo: Array[int] } + lo que cada juego quiera añadir; sirve también a mitad de partida
+
+func resultado_anticipado(estado: EstadoPartida, equipo_ganador: int) -> Dictionary
+    # PBI-08: calcular_resultado con el ganador que se decide fuera del motor (renuncio admitido en el chat)
 
 @abstract func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary
     # oculta las cartas de los demás antes de enviar al cliente
@@ -355,7 +390,7 @@ Una vez jugada una carta no se puede cambiar, salvo renuncio reconocido y que la
 
 **Fin de partido (encuentro).** El reglamento oficial encadena varias partidas dentro de un mismo encuentro hasta que una pareja gane el número de partidas acordado. **Decisión de equipo (reformulada tras esta corrección): el encuentro implementado consta de una única partida** — ganarla (por Tute o por tantos, con el desempate de arriba) termina el encuentro completo en la aplicación. *(Esto sustituye a la redacción anterior de este documento, "se juega a una sola mano": ese término no corresponde a ningún concepto real del reglamento — la unidad correcta es la partida, no la "mano".)*
 
-**Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — no aplica directamente aquí porque el cliente no ofrece ningún canal de voz o chat libre entre compañeros durante la jugada; si en el futuro PBI-08 añadiera chat de equipo también durante la partida en curso, habría que revisar si conviene restringirlo por este motivo.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
+**Penalizaciones (renuncio).** Se considera renuncio, entre otros casos: no asistir, montar o fallar en la fase de arrastre pudiendo hacerlo, en ese orden de obligación; cantar o cambiar el siete sin cumplir las condiciones de arriba; jugar fuera de turno; enseñar cartas propias o mirar las ajenas; o cualquier señal (verbal o gestual) entre compañeros más allá de lo que ya es visible en la mesa. *(El reglamento dedica un apartado extenso a catalogar expresiones verbales prohibidas entre compañeros en partida presencial — online se resuelve con el chat de la partida (PBI-08, §6): el chat es común a toda la mesa, no hay canal privado entre compañeros, y revelar cartas o hacer señas por él es renuncio que la pareja rival puede denunciar; si la pareja denunciada lo admite, pierde la partida.)* Un renuncio hace normalmente perder la partida a quien lo comete; si se usó para evitar una derrota segura, se pierde el encuentro completo. La pareja perjudicada puede optar en su lugar por repetir la fase en la que ocurrió el renuncio.
 
 **Notas de implementación (`game/server/game_engine/guinote/`).** Cómo se traduce lo anterior al motor:
 - **Asientos y sentido de juego:** los asientos se numeran en el orden en que se juega (antihorario). "A la derecha" de `p` es `(p + 1) % 4` y "a la izquierda", `(p + 3) % 4`; las parejas quedan 0-2 contra 1-3, como en §7.
