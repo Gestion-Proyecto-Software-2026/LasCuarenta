@@ -30,6 +30,15 @@ var limite_de: Dictionary = {}
 ## o más, está ausente.
 var agotados_seguidos: Dictionary = {}
 
+## Chat de la sala (PBI-08): sus mensajes y la denuncia pendiente, si la hay.
+var chat := ChatSala.new()
+## La partida ha terminado. La sala sigue viva solo para el chat mientras quede
+## alguien conectado (RoomManager la borra al irse el último).
+var terminada := false
+## Instante (ms del reloj de RoomManager) en que se pausó la partida por una
+## denuncia del chat; -1 si no está en pausa.
+var pausada_desde := -1
+
 
 ## Si se le ha acabado el tiempo tantas veces seguidas que se le da por ido.
 func es_ausente(posicion: int) -> bool:
@@ -38,6 +47,33 @@ func es_ausente(posicion: int) -> bool:
 
 func empezada() -> bool:
 	return estado != null
+
+
+## Si se está jugando: empezada, sin terminar.
+func en_curso() -> bool:
+	return empezada() and not terminada
+
+
+func en_pausa() -> bool:
+	return pausada_desde >= 0
+
+
+## Para la partida (denuncia del chat): mientras dure, nadie juega y los relojes
+## para decidir (PBI-14) no corren.
+func pausar(ahora: int) -> void:
+	if not en_pausa():
+		pausada_desde = ahora
+
+
+## Sigue la partida: a cada uno le queda el mismo tiempo para decidir que cuando
+## se pausó, así que sus límites se retrasan lo que ha durado la pausa.
+func reanudar(ahora: int) -> void:
+	if not en_pausa():
+		return
+	var pausa := ahora - pausada_desde
+	for posicion: int in limite_de:
+		limite_de[posicion] += pausa
+	pausada_desde = -1
 
 
 func todos_conectados() -> bool:

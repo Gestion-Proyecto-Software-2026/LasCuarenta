@@ -59,11 +59,11 @@ Dentro de `backend/src/`, la estructura actual ya separa por capa: `routes/` (un
 
 En `game/server/`:
 - `main_server.tscn`/`main_server.gd` — punto de entrada headless. Lee la configuración del entorno (§3), abre el `ENetMultiplayerPeer` (puerto 9000 por defecto, `-- --puerto=N` para cambiarlo) y conecta la red (`CanalRed`) con `RoomManager`. Su constante `MOTORES` asocia cada juego con su motor (hoy, `guinote` y `mus`); cada PBI de juego añade ahí su línea.
-- `room_manager.gd` — mantiene `salas_activas` (`sala_id → SalaActiva`) y es el único punto que conoce qué motor corresponde a cada sala. Valida `unirse_partida` (token con `verificador_jwt.gd`, sala con `cliente_backend.gd`), sienta a cada jugador en su posición, arranca la partida cuando están todos, pasa cada jugada al motor, difunde el estado filtrado y registra el resultado en el backend. No conoce ENet ni ninguna regla de juego: recibe mensajes y emite señales, así que se prueba sin red.
+- `room_manager.gd` — mantiene `salas_activas` (`sala_id → SalaActiva`) y es el único punto que conoce qué motor corresponde a cada sala. Valida `unirse_partida` (token con `verificador_jwt.gd`, sala con `cliente_backend.gd`), sienta a cada jugador en su posición, arranca la partida cuando están todos, pasa cada jugada al motor, difunde el estado filtrado y registra el resultado en el backend. También reenvía el chat de cada sala y atiende sus denuncias, que pausan la partida (`chat_sala.gd`, PBI-08). No conoce ENet ni ninguna regla de juego: recibe mensajes y emite señales, así que se prueba sin red.
 - `sala_activa.gd` — una sala en memoria: asientos, conexiones y estado de la partida.
 - `game_engine/motor_de_juego.gd` — clase base abstracta `MotorDeJuego` (con `estado_partida.gd` y `resultado_jugada.gd`), que implementarán `guinote/`, `mus/` y `tute/` (contrato completo en `analisis_funcional_app.md` §7).
 
-En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload `CanalRed`, el único RPC por el que viajan los mensajes) y `mensajes_red.gd` (nombres de los mensajes del protocolo).
+En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload `CanalRed`, por el que viajan todos los mensajes: dos RPC, uno por canal de ENet, el de las jugadas y el del chat, que acaban en la misma señal) y `mensajes_red.gd` (nombres de los mensajes del protocolo).
 
 ---
 

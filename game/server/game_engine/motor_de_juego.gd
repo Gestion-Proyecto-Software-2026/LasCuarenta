@@ -84,6 +84,17 @@ func aplicar_jugada(estado: EstadoPartida, jugador_id: int, jugada: Dictionary) 
 @abstract func calcular_resultado(estado: EstadoPartida) -> Dictionary
 
 
+## Resultado de una partida que se corta antes de terminar por algo ajeno a las
+## reglas (un renuncio admitido en el chat, PBI-08): el marcador que llevaba cada
+## equipo hasta ese momento (HU-016) y el ganador que se decide fuera del motor.
+## Sirve para cualquier juego porque [method calcular_resultado] da el tanteo
+## acumulado también a mitad de partida.
+func resultado_anticipado(estado: EstadoPartida, equipo_ganador: int) -> Dictionary:
+	var resultado := calcular_resultado(estado)
+	resultado["equipo_ganador"] = equipo_ganador
+	return resultado
+
+
 ## Lo que se envía a [param jugador_id] en [code]estado_partida[/code]: nunca
 ## debe incluir las cartas en mano de los demás jugadores.
 @abstract func vista_para_jugador(estado: EstadoPartida, jugador_id: int) -> Dictionary

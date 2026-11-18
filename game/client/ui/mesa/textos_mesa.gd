@@ -71,6 +71,8 @@ static func marcador_idas(vista: Dictionary, nombres: Array) -> String:
 ## El panel de fin de partida. [param juego] es el de la mesa ("guinote",
 ## "tute", "tute_dos" o "mus") y [param nombres], el de cada asiento.
 static func resultado(juego: String, r: Dictionary, nombres: Array) -> String:
+	if r.get("causa") == "renuncio":
+		return _resultado_renuncio(juego, r, nombres)
 	if juego == "mus":
 		return _resultado_mus(r, nombres)
 	var ganador: int = r.get("equipo_ganador", -1)
@@ -89,6 +91,23 @@ static func resultado(juego: String, r: Dictionary, nombres: Array) -> String:
 	var total: Array = r.get("puntos_por_equipo", [])
 	if manos.size() > 1 and total.size() == 2:
 		lineas.append("Total: %d - %d" % [total[0], total[1]])
+	return "\n".join(lineas)
+
+
+## Partida cortada por un renuncio admitido en el chat (PBI-08): gana la parte
+## perjudicada y se enseña el marcador que había en ese momento (en el Mus, los
+## juegos ganados; en el resto, los tantos).
+static func _resultado_renuncio(juego: String, r: Dictionary, nombres: Array) -> String:
+	var ganador: int = r.get("equipo_ganador", -1)
+	var lineas := PackedStringArray(["FIN DE LA PARTIDA"])
+	if ganador in [0, 1]:
+		lineas.append("Gana %s por renuncio: %s admitió haber revelado información por el chat." % [
+			nombre_equipo(ganador, nombres), nombre_equipo(1 - ganador, nombres)])
+	var puntos: Array = r.get("puntos_por_equipo", [])
+	if puntos.size() == 2:
+		lineas.append("Marcador en ese momento: %s %d · %s %d%s" % [
+			nombre_equipo(0, nombres), puntos[0], nombre_equipo(1, nombres), puntos[1],
+			" juegos" if juego == "mus" else ""])
 	return "\n".join(lineas)
 
 
