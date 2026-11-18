@@ -63,3 +63,5 @@ var tute: Dictionary = {}
 ## Tras la 4ª baza, si alguien de la pareja ganadora tiene el 7 de triunfo, el
 ## último robo espera a que decida si lo cambia por la pinta. -1 si no se espera.
 var siete_pendiente: int = -1
+## Tute de 2: quien ha anunciado capote (ganar todas las bazas del arrastre), o -1.
+var capote: int = -1

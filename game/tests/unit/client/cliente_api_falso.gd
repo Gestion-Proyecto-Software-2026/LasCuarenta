@@ -1,11 +1,15 @@
 extends Node
-## Doble de ClienteApi para los tests del lobby: mismas funciones, sin HTTP.
+## Doble de ClienteApi para los tests del lobby y del historial: mismas funciones, sin HTTP.
 ## Cada test configura la respuesta que quiere y puede revisar las llamadas hechas.
 
 var autenticado := true
 var usuario: Dictionary = {"nombre_visible": "Ana"}
 var token := ""
 
+var respuesta_historial: Dictionary = {"ok": true, "codigo": 200, "datos": []}
+var respuesta_estadisticas: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
+var respuesta_privacidad: Dictionary = {"ok": true, "codigo": 200, "datos": {"historial_publico": true}}
+var respuesta_cambiar_privacidad: Dictionary = {"ok": true, "codigo": 200, "datos": {"historial_publico": true}}
 var respuesta_listar: Dictionary = {"ok": true, "codigo": 200, "datos": []}
 var respuesta_crear: Dictionary = {"ok": true, "codigo": 201, "datos": {}}
 var respuesta_unirse: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
@@ -25,6 +29,30 @@ func esta_autenticado() -> bool:
 func cerrar_sesion() -> void:
 	autenticado = false
 	usuario = {}
+
+
+func historial(usuario_id: String = "me", juego: String = "") -> Dictionary:
+	llamadas.append(["historial", usuario_id, juego])
+	await _esperar()
+	return respuesta_historial
+
+
+func estadisticas(usuario_id: String = "me") -> Dictionary:
+	llamadas.append(["estadisticas", usuario_id])
+	await _esperar()
+	return respuesta_estadisticas
+
+
+func privacidad() -> Dictionary:
+	llamadas.append(["privacidad"])
+	await _esperar()
+	return respuesta_privacidad
+
+
+func cambiar_privacidad(publico: bool) -> Dictionary:
+	llamadas.append(["cambiar_privacidad", publico])
+	await _esperar()
+	return respuesta_cambiar_privacidad
 
 
 func listar_salas(juego: String = "guinote") -> Dictionary:

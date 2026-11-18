@@ -14,6 +14,7 @@ signal cancelado
 const CAPACIDADES_POR_JUEGO := {
 	"guinote": [4, 2],
 	"mus": [4, 2],
+	"tute": [4, 2],
 }
 
 @onready var opcion_juego: OptionButton = %OpcionJuego

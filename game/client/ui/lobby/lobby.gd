@@ -4,6 +4,8 @@ extends Control
 
 const ESCENA_FILA := preload("res://client/ui/lobby/sala_fila.tscn")
 const ESCENA_CREAR_SALA := preload("res://client/ui/lobby/crear_sala.tscn")
+## Historial y estadísticas del usuario (PBI-06).
+const ESCENA_HISTORIAL := "res://client/ui/historial/historial.tscn"
 const ESCENA_LOGIN := "res://client/ui/login/login.tscn"
 const ESCENA_ESPERA := "res://client/ui/espera/espera.tscn"
 const ESCENA_RANKING := "res://client/ui/ranking/ranking.tscn"
@@ -12,6 +14,7 @@ const ESCENA_RANKING := "res://client/ui/ranking/ranking.tscn"
 @onready var etiqueta_error: Label = %EtiquetaError
 @onready var etiqueta_vacia: Label = %EtiquetaVacia
 @onready var boton_crear: Button = %BotonCrear
+@onready var boton_historial: Button = %BotonHistorial
 @onready var boton_actualizar: Button = %BotonActualizar
 @onready var boton_cerrar_sesion: Button = %BotonCerrarSesion
 @onready var boton_ranking: Button = %BotonRanking
@@ -28,6 +31,7 @@ func _ready() -> void:
 	etiqueta_usuario.text = "Bienvenido/a, %s" % api.usuario.get("nombre_visible", "")
 	etiqueta_error.visible = false
 	boton_crear.pressed.connect(_on_boton_crear_pressed)
+	boton_historial.pressed.connect(_on_boton_historial_pressed)
 	boton_actualizar.pressed.connect(_on_boton_actualizar_pressed)
 	boton_cerrar_sesion.pressed.connect(_on_boton_cerrar_sesion_pressed)
 	boton_ranking.pressed.connect(_on_boton_ranking_pressed)
@@ -116,6 +120,11 @@ func _entrar_en_sala_o_refrescar(datos: Dictionary) -> void:
 		return
 	ClienteRed.preparar(sala_id, servidor_direccion)
 	get_tree().change_scene_to_file(ESCENA_ESPERA)
+
+
+## Abre tus partidas terminadas y tus estadísticas.
+func _on_boton_historial_pressed() -> void:
+	get_tree().change_scene_to_file(ESCENA_HISTORIAL)
 
 
 func _on_boton_cerrar_sesion_pressed() -> void:

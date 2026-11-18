@@ -19,6 +19,7 @@ const ESPERA_ANTES_DE_EXPULSAR_S := 1.0
 const MOTORES := {
 	"guinote": preload("res://server/game_engine/guinote/motor_guinote.gd"),
 	"mus": preload("res://server/game_engine/mus/motor_mus.gd"),
+	"tute": preload("res://server/game_engine/tute/motor_tute.gd"),
 }
 
 var room_manager: RoomManager
@@ -49,7 +50,8 @@ func _ready() -> void:
 
 	var backend := ClienteBackend.new(url_backend, secreto_interno)
 	add_child(backend)
-	room_manager = RoomManager.new(backend, jwt_secret, MOTORES)
+	room_manager = RoomManager.new(backend, jwt_secret, MOTORES,
+		leer_segundos_por_turno(OS.get_environment("SEGUNDOS_POR_TURNO")))
 	add_child(room_manager)
 
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -57,8 +59,8 @@ func _ready() -> void:
 	CanalRed.mensaje_recibido.connect(room_manager.recibir)
 	room_manager.mensaje_para.connect(CanalRed.enviar)
 	room_manager.expulsar.connect(_expulsar)
-	print("Servidor de partida escuchando en UDP %d (backend: %s, juegos: %s)"
-		% [puerto, url_backend, MOTORES.keys()])
+	print("Servidor de partida escuchando en UDP %d (backend: %s, juegos: %s, %s s por turno)"
+		% [puerto, url_backend, MOTORES.keys(), room_manager.segundos_por_turno])
 
 
 ## Lee [code]--puerto=N[/code] de los argumentos de usuario (los que van tras [code]--[/code]).
@@ -70,6 +72,17 @@ static func leer_puerto(args: PackedStringArray) -> int:
 				return valor.to_int()
 			push_warning("Puerto no válido '%s'; se usa %d" % [valor, PUERTO_POR_DEFECTO])
 	return PUERTO_POR_DEFECTO
+
+
+## Lee el tiempo límite para decidir de [code]SEGUNDOS_POR_TURNO[/code]; si no
+## está o no es un número de 0 o más, el de por defecto (PBI-14).
+static func leer_segundos_por_turno(valor: String) -> float:
+	if valor.is_empty():
+		return RoomManager.SEGUNDOS_POR_TURNO_POR_DEFECTO
+	if not valor.is_valid_float() or valor.to_float() < 0:
+		push_warning("SEGUNDOS_POR_TURNO no válido '%s'; se usa %s" % [valor, RoomManager.SEGUNDOS_POR_TURNO_POR_DEFECTO])
+		return RoomManager.SEGUNDOS_POR_TURNO_POR_DEFECTO
+	return valor.to_float()
 
 
 func _on_peer_connected(peer_id: int) -> void:
