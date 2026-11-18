@@ -10,6 +10,9 @@ var capacidad: int
 var motor: MotorDeJuego
 ## null hasta que se conectan todos los jugadores y empieza la partida.
 var estado: EstadoPartida = null
+## Cuándo empezó la partida (ISO 8601 en UTC, "" hasta que empieza): se manda
+## al backend con el resultado para el historial (PBI-06).
+var fecha_inicio: String = ""
 
 var posicion_de_usuario: Dictionary = {}  # usuario_id -> posicion
 var usuario_en_posicion: Dictionary = {}  # posicion -> usuario_id

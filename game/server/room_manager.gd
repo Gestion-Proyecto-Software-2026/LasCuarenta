@@ -26,6 +26,11 @@ const AVISO_TIEMPO_AGOTADO := "Se te ha acabado el tiempo: se ha jugado por ti."
 const TIEMPOS_AGOTADOS_PARA_AUSENTE := 2
 const SEGUNDOS_DE_AUSENTE := 2.0
 const AVISO_AUSENTE := "Se te ha dado por ausente: el servidor jugará por ti hasta que vuelvas a jugar tú."
+## Registro del resultado en el backend (PBI-06): veces que se intenta
+## POST /interno/partidas antes de darlo por perdido. Solo se reintenta si no
+## hubo respuesta o el backend falló (5xx); si un intento anterior sí llegó a
+## guardarse, el backend contesta 409 y no duplica la partida.
+const INTENTOS_REGISTRO := 3
 
 ## sala_id -> SalaActiva
 var salas_activas: Dictionary = {}
@@ -33,6 +38,13 @@ var salas_activas: Dictionary = {}
 var segundos_por_turno: float
 ## Reloj en milisegundos. Los tests lo sustituyen para no tener que esperar.
 var reloj: Callable = func() -> int: return Time.get_ticks_msec()
+## Fecha y hora actuales en UTC, en ISO 8601 ("2026-11-18T10:24:13Z"): el
+## inicio y el fin de la partida que se guardan en el historial. Los tests lo
+## sustituyen, igual que [member reloj].
+var reloj_fecha: Callable = func() -> String: return Time.get_datetime_string_from_system(true) + "Z"
+## Segundos entre un intento de registro y el siguiente. Los tests la ponen a 0
+## y entonces se reintenta en el acto, sin esperar a ningún temporizador.
+var espera_entre_intentos_s := 2.0
 
 var _backend: Node
 var _jwt_secret: String
@@ -252,6 +264,7 @@ func _actualizar_participantes(sala: SalaActiva) -> void:
 
 func _empezar(sala: SalaActiva) -> void:
 	sala.estado = sala.motor.iniciar(sala.capacidad)
+	sala.fecha_inicio = reloj_fecha.call()
 	_actualizar_tiempos(sala, -1)
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_inicio(sala, posicion)
@@ -369,21 +382,52 @@ func _tiempos_para_decidir(sala: SalaActiva) -> Array[Dictionary]:
 	return tiempos
 
 
-func _terminar(sala: SalaActiva) -> void:
-	var resultado := sala.motor.calcular_resultado(sala.estado)
+## Cierra la partida: avisa a los jugadores con el resultado, libera la sala y
+## lo guarda en el backend. [param resultado] vacío es el del motor
+## ([method MotorDeJuego.calcular_resultado]); quien corte la partida antes de
+## tiempo (p. ej. un renuncio, PBI-08) pasa el suyo y su [param causa].
+func _terminar(sala: SalaActiva, resultado: Dictionary = {}, causa := "completa") -> void:
+	if resultado.is_empty():
+		resultado = sala.motor.calcular_resultado(sala.estado)
+	# Antes de avisar a nadie: así los jugadores y el historial ven lo mismo.
+	resultado["causa"] = causa
 	for posicion: int in sala.peer_en_posicion:
 		_enviar(sala.peer_en_posicion[posicion], MensajesRed.PARTIDA_TERMINADA, {"resultado": resultado})
 		_sala_de_peer.erase(sala.peer_en_posicion[posicion])
 	salas_activas.erase(sala.sala_id)
+	_registrar_resultado(sala, resultado)
 
-	var respuesta: Dictionary = await _backend.registrar_partida({
+
+## Guarda la partida terminada en el backend (POST /interno/partidas) para el
+## historial y el ranking, reintentando según [constant INTENTOS_REGISTRO] si
+## el backend no contesta o falla (5xx). Un 409 es que ya estaba guardada (un
+## intento anterior llegó aunque no se recibiera la respuesta) y vale como
+## éxito; cualquier otro 4xx es un error en los datos, que no se arregla
+## repitiendo la misma petición.
+func _registrar_resultado(sala: SalaActiva, resultado: Dictionary) -> void:
+	var datos := {
 		"sala_id": sala.sala_id,
 		"jugadores": sala.jugadores(),
 		"resultado": resultado,
-	})
-	if not respuesta.get("ok", false):
-		push_error("No se pudo registrar el resultado de la sala %s en el backend (código %s)"
-			% [sala.sala_id, respuesta.get("codigo")])
+		"fecha_fin": reloj_fecha.call(),
+	}
+	# Sin fecha de inicio el backend usa la de fin; una cadena vacía la rechazaría.
+	if not sala.fecha_inicio.is_empty():
+		datos["fecha_inicio"] = sala.fecha_inicio
+	var codigo := 0
+	for intento in INTENTOS_REGISTRO:
+		if intento > 0 and espera_entre_intentos_s > 0.0 and is_inside_tree():
+			await get_tree().create_timer(espera_entre_intentos_s).timeout
+		var respuesta: Dictionary = await _backend.registrar_partida(datos)
+		codigo = int(respuesta.get("codigo", 0))
+		if respuesta.get("ok", false) or codigo == 409:
+			return
+		if codigo > 0 and codigo < 500:
+			push_error("El backend rechazó el resultado de la sala %s (código %d): %s"
+				% [sala.sala_id, codigo, respuesta.get("datos")])
+			return
+	push_error("No se pudo registrar el resultado de la sala %s en el backend tras %d intentos (código %d)"
+		% [sala.sala_id, INTENTOS_REGISTRO, codigo])
 
 
 func _enviar_inicio(sala: SalaActiva, posicion: int) -> void:
