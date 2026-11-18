@@ -31,6 +31,7 @@ const AVISO_AUSENTE := "Se te ha dado por ausente: el servidor jugará por ti ha
 ## hubo respuesta o el backend falló (5xx); si un intento anterior sí llegó a
 ## guardarse, el backend contesta 409 y no duplica la partida.
 const INTENTOS_REGISTRO := 3
+const ERROR_EN_PAUSA := "La partida está en pausa: hay una denuncia de chat pendiente"
 
 ## sala_id -> SalaActiva
 var salas_activas: Dictionary = {}
@@ -51,6 +52,10 @@ var _jwt_secret: String
 var _motores: Dictionary
 var _peers_conectados: Dictionary = {}  # peer_id -> true
 var _sala_de_peer: Dictionary = {}  # peer_id -> sala_id
+## Salas cuya partida ya ha terminado pero en las que aún queda alguien
+## conectado: se conservan solo para el chat (PBI-08) y se borran, con sus
+## mensajes, al irse el último (HU-035, CA-131). sala_id -> SalaActiva
+var _salas_terminadas: Dictionary = {}
 var _consultas_en_curso: Dictionary = {}  # sala_id -> _Consulta
 var _uuid := RegEx.create_from_string(
 	"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -77,6 +82,7 @@ func _init(backend: Node, jwt_secret: String, motores: Dictionary,
 
 func _process(_delta: float) -> void:
 	comprobar_tiempos()
+	comprobar_denuncias()
 
 
 func conectar(peer_id: int) -> void:
@@ -84,12 +90,15 @@ func conectar(peer_id: int) -> void:
 
 
 ## El asiento queda libre para que el mismo usuario pueda reconectarse con
-## otra conexión; la partida no se cancela.
+## otra conexión; la partida no se cancela. Si la partida ya había terminado y
+## era el último en irse, la sala se borra y con ella su chat (HU-035, CA-131).
 func desconectar(peer_id: int) -> void:
 	_peers_conectados.erase(peer_id)
-	var sala := _sala_del_peer(peer_id)
+	var sala := _sala_de_chat(peer_id)
 	if sala != null:
 		sala.peer_en_posicion.erase(sala.posicion_de_peer(peer_id))
+		if sala.terminada and sala.peer_en_posicion.is_empty():
+			_salas_terminadas.erase(sala.sala_id)
 	_sala_de_peer.erase(peer_id)
 
 
@@ -103,7 +112,13 @@ func recibir(peer_id: int, mensaje: Dictionary) -> void:
 		MensajesRed.UNIRSE_PARTIDA:
 			_unirse(peer_id, payload)
 		MensajesRed.CHAT_ENVIAR:
-			_enviar_error(peer_id, "El chat todavía no está disponible")
+			_chatear(peer_id, payload)
+		MensajesRed.DENUNCIAR_CHAT:
+			_denunciar(peer_id, payload)
+		MensajesRed.ADMITIR_DENUNCIA:
+			_responder_denuncia(peer_id, true)
+		MensajesRed.NO_ADMITIR_DENUNCIA:
+			_responder_denuncia(peer_id, false)
 		_:
 			_jugar(peer_id, tipo, payload)
 
@@ -161,11 +176,16 @@ func _unirse(peer_id: int, payload: Dictionary) -> void:
 		_enviar_estado(sala, posicion)
 	elif sala.todos_conectados():
 		_empezar(sala)
+	_poner_al_dia_del_chat(sala, posicion)
 
 
 ## Devuelve [code]{ "sala": SalaActiva, "error": "" }[/code], o
 ## [code]{ "sala": null, "error": motivo }[/code].
 func _cargar_sala(sala_id: String) -> Dictionary:
+	# Terminada hace nada: el backend quizá aún no lo sabe (el registro va
+	# después), pero no se puede volver a empezar.
+	if _salas_terminadas.has(sala_id):
+		return {"sala": null, "error": "La sala ya ha terminado"}
 	if salas_activas.has(sala_id):
 		return {"sala": salas_activas[sala_id], "error": ""}
 
@@ -274,10 +294,15 @@ func _empezar(sala: SalaActiva) -> void:
 func _jugar(peer_id: int, tipo: String, payload: Dictionary) -> void:
 	var sala := _sala_del_peer(peer_id)
 	if sala == null:
-		_enviar_error(peer_id, "Primero tienes que unirte a una partida")
+		var terminada := _sala_de_chat(peer_id) != null
+		_enviar_error(peer_id, MotorDeJuego.ERROR_PARTIDA_TERMINADA if terminada
+			else "Primero tienes que unirte a una partida")
 		return
 	if not sala.empezada():
 		_enviar_error(peer_id, "La partida todavía no ha empezado")
+		return
+	if sala.en_pausa():
+		_enviar_error(peer_id, ERROR_EN_PAUSA)
 		return
 
 	var jugada := {"tipo": tipo}
@@ -322,7 +347,8 @@ func comprobar_tiempos() -> void:
 	var ahora: int = reloj.call()
 	for sala_id: String in salas_activas.keys():
 		var sala: SalaActiva = salas_activas.get(sala_id)
-		if sala == null or not sala.empezada():
+		# En pausa por una denuncia del chat los relojes no corren.
+		if sala == null or not sala.empezada() or sala.en_pausa():
 			continue
 		for posicion: int in sala.limite_de:
 			if sala.limite_de[posicion] <= ahora:
@@ -372,7 +398,8 @@ func _actualizar_tiempos(sala: SalaActiva, quien_ha_jugado: int) -> void:
 ## le queda a cada jugador esperado, para que el cliente enseñe la cuenta atrás.
 func _tiempos_para_decidir(sala: SalaActiva) -> Array[Dictionary]:
 	var tiempos: Array[Dictionary] = []
-	var ahora: int = reloj.call()
+	# En pausa el reloj está parado: lo que le queda a cada uno es lo de entonces.
+	var ahora: int = sala.pausada_desde if sala.en_pausa() else reloj.call()
 	for posicion: int in sala.limite_de:
 		tiempos.append({
 			"posicion": posicion,
@@ -391,10 +418,16 @@ func _terminar(sala: SalaActiva, resultado: Dictionary = {}, causa := "completa"
 		resultado = sala.motor.calcular_resultado(sala.estado)
 	# Antes de avisar a nadie: así los jugadores y el historial ven lo mismo.
 	resultado["causa"] = causa
+	sala.terminada = true
+	sala.limite_de.clear()
+	sala.pausada_desde = -1
 	for posicion: int in sala.peer_en_posicion:
 		_enviar(sala.peer_en_posicion[posicion], MensajesRed.PARTIDA_TERMINADA, {"resultado": resultado})
-		_sala_de_peer.erase(sala.peer_en_posicion[posicion])
 	salas_activas.erase(sala.sala_id)
+	# Los jugadores siguen en la sala, pero ya solo para chatear (PBI-08): se
+	# borra cuando se va el último (ver desconectar).
+	if not sala.peer_en_posicion.is_empty():
+		_salas_terminadas[sala.sala_id] = sala
 	_registrar_resultado(sala, resultado)
 
 
@@ -428,6 +461,101 @@ func _registrar_resultado(sala: SalaActiva, resultado: Dictionary) -> void:
 			return
 	push_error("No se pudo registrar el resultado de la sala %s en el backend tras %d intentos (código %d)"
 		% [sala.sala_id, INTENTOS_REGISTRO, codigo])
+
+
+# --- Chat de la partida y denuncias (PBI-08) ----------------------------------
+# El chat no toca el motor ni el estado de la partida: se atiende al momento,
+# aunque la partida esté en pausa o ya haya terminado.
+
+
+## Reenvía un mensaje a todos los de la sala, quien lo escribe incluido. Nunca
+## llega a otra sala. Quién lo dice (usuario, nombre y asiento) lo pone el
+## servidor a partir de la conexión, nunca del payload.
+func _chatear(peer_id: int, payload: Dictionary) -> void:
+	var sala := _sala_de_chat(peer_id)
+	var posicion := sala.posicion_de_peer(peer_id) if sala != null else -1
+	if posicion < 0:
+		_enviar_error(peer_id, "Primero tienes que unirte a una partida")
+		return
+	var texto: Variant = payload.get("mensaje")
+	var error := ChatSala.validar(texto)
+	if not error.is_empty():
+		_enviar_error(peer_id, error)
+		return
+	var mensaje := sala.chat.publicar(posicion, sala.usuario_en_posicion.get(posicion, ""),
+		sala.nombre_en_posicion.get(posicion, ""), texto, sala.en_curso())
+	_a_toda_la_sala(sala, MensajesRed.CHAT_MENSAJE, mensaje)
+
+
+## Lo que necesita del chat quien acaba de unirse o reconectarse: todos los
+## mensajes de la sala (HU-035, CA-130) y, si la partida está en pausa, la denuncia.
+func _poner_al_dia_del_chat(sala: SalaActiva, posicion: int) -> void:
+	var peer: int = sala.peer_en_posicion[posicion]
+	_enviar(peer, MensajesRed.CHAT_HISTORIAL, {"mensajes": sala.chat.mensajes.duplicate(true)})
+	if sala.chat.hay_denuncia():
+		_enviar(peer, MensajesRed.DENUNCIA_CHAT,
+			ChatSala.vista_denuncia(sala.chat.denuncia, "pendiente", reloj.call()))
+
+
+## Un rival del autor denuncia un mensaje (HU-036): si se admite la denuncia,
+## la partida se pausa hasta que la parte denunciada responda o pase el plazo.
+func _denunciar(peer_id: int, payload: Dictionary) -> void:
+	var sala := _sala_del_peer(peer_id)
+	if sala == null:
+		_enviar_error(peer_id, ChatSala.ERROR_SIN_PARTIDA if _sala_de_chat(peer_id) != null
+			else "Primero tienes que unirte a una partida")
+		return
+	var ahora: int = reloj.call()
+	var error := sala.chat.denunciar(payload.get("mensaje_id"), sala.posicion_de_peer(peer_id), ahora, sala.en_curso())
+	if not error.is_empty():
+		_enviar_error(peer_id, error)
+		return
+	sala.pausar(ahora)
+	_a_toda_la_sala(sala, MensajesRed.DENUNCIA_CHAT,
+		ChatSala.vista_denuncia(sala.chat.denuncia, "pendiente", ahora))
+
+
+## Cualquiera de la parte denunciada contesta; vale la primera respuesta.
+func _responder_denuncia(peer_id: int, admite: bool) -> void:
+	var sala := _sala_del_peer(peer_id)
+	if sala == null:
+		_enviar_error(peer_id, ChatSala.ERROR_SIN_DENUNCIA if _sala_de_chat(peer_id) != null
+			else "Primero tienes que unirte a una partida")
+		return
+	var posicion := sala.posicion_de_peer(peer_id)
+	var error := sala.chat.puede_responder(posicion)
+	if not error.is_empty():
+		_enviar_error(peer_id, error)
+		return
+	_resolver_denuncia(sala, "admitida" if admite else "no_admitida", posicion)
+
+
+## Da por caducadas (sin admitir) las denuncias a las que nadie ha contestado a
+## tiempo. Como [method comprobar_tiempos], se llama en cada frame y los tests
+## la llaman a mano; funciona aunque el tiempo límite para decidir esté desactivado.
+func comprobar_denuncias() -> void:
+	var ahora: int = reloj.call()
+	for sala_id: String in salas_activas.keys():
+		var sala: SalaActiva = salas_activas.get(sala_id)
+		if sala != null and sala.chat.hay_denuncia() and int(sala.chat.denuncia["limite_ms"]) <= ahora:
+			_resolver_denuncia(sala, "caducada")
+
+
+## Cierra la denuncia pendiente y se lo cuenta a todos. Admitida: termina la
+## partida y gana la parte perjudicada con el marcador que llevaba cada uno
+## (HU-036 CA-134, HU-016 CA-060). Si no: se sigue jugando donde estaba (CA-135),
+## y todos reciben el estado con sus jugadas y lo que les queda de tiempo.
+func _resolver_denuncia(sala: SalaActiva, estado: String, quien := -1) -> void:
+	var ahora: int = reloj.call()
+	var denuncia := sala.chat.cerrar_denuncia()
+	_a_toda_la_sala(sala, MensajesRed.DENUNCIA_CHAT, ChatSala.vista_denuncia(denuncia, estado, ahora, quien))
+	if estado == "admitida":
+		var ganador := 1 - int(denuncia["equipo_denunciado"])
+		_terminar(sala, sala.motor.resultado_anticipado(sala.estado, ganador), "renuncio")
+		return
+	sala.reanudar(ahora)
+	for posicion: int in sala.peer_en_posicion:
+		_enviar_estado(sala, posicion)
 
 
 func _enviar_inicio(sala: SalaActiva, posicion: int) -> void:
@@ -472,6 +600,18 @@ static func _jugada_publica(jugada: Dictionary, posicion: int, numero: int) -> D
 
 func _sala_del_peer(peer_id: int) -> SalaActiva:
 	return salas_activas.get(_sala_de_peer.get(peer_id, ""))
+
+
+## La sala del peer para el chat: la activa o, si su partida ya ha terminado,
+## la que se conserva para seguir chateando (ver [member _salas_terminadas]).
+func _sala_de_chat(peer_id: int) -> SalaActiva:
+	var sala_id: String = _sala_de_peer.get(peer_id, "")
+	return salas_activas.get(sala_id, _salas_terminadas.get(sala_id))
+
+
+func _a_toda_la_sala(sala: SalaActiva, tipo: String, payload: Dictionary) -> void:
+	for posicion: int in sala.peer_en_posicion:
+		_enviar(sala.peer_en_posicion[posicion], tipo, payload.duplicate(true))
 
 
 func _enviar(peer_id: int, tipo: String, payload: Dictionary) -> void:

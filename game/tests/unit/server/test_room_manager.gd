@@ -227,8 +227,9 @@ func test_mensajes_mal_formados_y_chat() -> void:
 	assert_eq(_ultimo_error(10), "Mensaje mal formado: se espera { tipo, payload }")
 	rm.recibir(10, {"tipo": "jugar_carta", "payload": "texto"})
 	assert_eq(_ultimo_error(10), "Mensaje mal formado: se espera { tipo, payload }")
+	# El chat solo funciona dentro de una sala (PBI-08, test_room_manager_chat.gd).
 	rm.recibir(10, MensajesRed.crear(MensajesRed.CHAT_ENVIAR, {"mensaje": "hola"}))
-	assert_eq(_ultimo_error(10), "El chat todavía no está disponible")
+	assert_eq(_ultimo_error(10), "Primero tienes que unirte a una partida")
 
 
 func test_partida_completa_notifica_y_registra_en_el_backend() -> void:
