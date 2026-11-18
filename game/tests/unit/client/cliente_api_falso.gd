@@ -14,6 +14,7 @@ var respuesta_listar: Dictionary = {"ok": true, "codigo": 200, "datos": []}
 var respuesta_crear: Dictionary = {"ok": true, "codigo": 201, "datos": {}}
 var respuesta_unirse: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
 var respuesta_salir: Dictionary = {"ok": true, "codigo": 204, "datos": null}
+var respuesta_ranking: Dictionary = {"ok": true, "codigo": 200, "datos": []}
 
 ## Lista de [nombre_de_funcion, argumento] en el orden en que se llamaron.
 var llamadas: Array = []
@@ -76,6 +77,12 @@ func salir_sala(sala_id: String) -> Dictionary:
 	llamadas.append(["salir_sala", sala_id])
 	await _esperar()
 	return respuesta_salir
+
+
+func obtener_ranking(juego: String = "guinote") -> Dictionary:
+	llamadas.append(["obtener_ranking", juego])
+	await _esperar()
+	return respuesta_ranking
 
 
 func _esperar() -> void:

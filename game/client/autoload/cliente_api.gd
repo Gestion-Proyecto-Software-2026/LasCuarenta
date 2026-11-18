@@ -109,6 +109,14 @@ func salir_sala(sala_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/unirse" % sala_id.uri_encode())
 
 
+## Clasificación pública (PBI-07). [param juego] vacío agrega todos los juegos.
+func obtener_ranking(juego: String = "guinote") -> Dictionary:
+	var ruta := "/ranking"
+	if not juego.is_empty():
+		ruta += "?juego=" + juego.uri_encode()
+	return await _pedir(HTTPClient.METHOD_GET, ruta)
+
+
 func _hash_password(password: String) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
