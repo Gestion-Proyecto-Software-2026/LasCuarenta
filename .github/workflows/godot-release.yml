@@ -1,11 +1,25 @@
 name: Build and release client
 
-# Se dispara al crear un tag (p. ej. v0.1.0). Requiere tener
-# configurados los export presets (game/export_presets.cfg) y,
-# para firmar en Windows, los secretos correspondientes.
+# Exporta el cliente para Windows y Linux (PBI-13).
+#  - Al subir un tag (p. ej. v0.1.0): además publica una GitHub Release con los ejecutables.
+#  - En una PR que toque la exportación, o a mano desde la pestaña Actions
+#    ("Run workflow"): solo exporta y comprueba el resultado; los ejecutables
+#    quedan como artefacto de la ejecución, para probarlos sin publicar nada.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - "game/export_presets.cfg"
+      - "game/client/**"
+      - "game/shared/**"
+      - "game/project.godot"
+      - "cliente/**"
+      - ".github/workflows/godot-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # solo lo usa el paso que publica la Release
 
 jobs:
   build:
@@ -20,13 +34,47 @@ jobs:
           use-dotnet: false
           # Sin las plantillas de exportación, --export-release falla.
           include-templates: true
+      # Sin importar antes, no existe la caché de clases y la exportación sale rota.
+      - name: Importar el proyecto
+        working-directory: game
+        run: godot --headless --path . --import
       - name: Export Windows build
         working-directory: game
-        run: godot --headless --export-release "Windows Desktop" ../build/cartas-online-windows.exe
+        run: godot --headless --path . --export-release "Windows Desktop" ../build/cartas-online-windows.exe
       - name: Export Linux build
         working-directory: game
-        run: godot --headless --export-release "Linux" ../build/cartas-online-linux.x86_64
+        run: godot --headless --path . --export-release "Linux" ../build/cartas-online-linux.x86_64
+      - name: Comprobar los ejecutables
+        shell: bash
+        run: |
+          ls -l build
+          for f in build/cartas-online-windows.exe build/cartas-online-linux.x86_64; do
+            test -s "$f" || { echo "::error::$f no existe o está vacío"; exit 1; }
+            # El cliente no debe llevar ni los tests, ni GUT, ni el servidor de partida.
+            for prohibido in "res://tests/" "res://server/"; do
+              if grep -aq "$prohibido" "$f"; then
+                echo "::error::$f contiene $prohibido"
+                exit 1
+              fi
+            done
+            # De GUT solo puede quedar la línea de project.godot que activa el plugin
+            # en el editor (res://addons/gut/plugin.cfg), nunca sus ficheros.
+            if grep -a -o "res://addons/gut[^[:cntrl:]]*" "$f" | grep -v "res://addons/gut/plugin.cfg" | grep -q .; then
+              echo "::error::$f contiene ficheros de GUT"
+              exit 1
+            fi
+            # Y sí la pantalla de inicio, que es lo que tiene que abrirse.
+            grep -aq "res://client/ui/login/login" "$f" || { echo "::error::$f no contiene la pantalla de login"; exit 1; }
+          done
+      - name: Añadir las instrucciones para quien juega
+        run: cp cliente/LEEME.txt cliente/servidor.cfg.ejemplo build/
+      - name: Guardar los ejecutables como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartas-online
+          path: build/*
       - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: build/*
