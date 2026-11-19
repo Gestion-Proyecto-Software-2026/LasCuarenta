@@ -284,7 +284,6 @@ function traducirErrorBd(err) {
   return err;
 }
 
-
 // POST /api/interno/salas/:id/iniciar — el servidor de partida avisa de que la
 // partida ha empezado (el creador pulsó EMPEZAR): la sala pasa a `en_curso` y
 // desde entonces ya no se puede expulsar, unirse ni abandonar (PBI-09).
