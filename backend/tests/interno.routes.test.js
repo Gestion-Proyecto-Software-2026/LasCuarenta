@@ -102,6 +102,97 @@ describe("POST /api/interno/partidas", () => {
 
     expect(res.status).toBe(400);
   });
+
+  it("pasa al servicio la causa, las fechas y la posicion tal cual llegan", async () => {
+    internoService.registrarPartida.mockResolvedValue({ id: "partida-1" });
+    const completo = {
+      sala_id: SALA_ID,
+      jugadores: [
+        {
+          usuario_id: "22222222-2222-4222-8222-222222222222",
+          posicion: 2,
+          equipo: 0,
+        },
+      ],
+      resultado: {
+        equipo_ganador: 1,
+        puntos_por_equipo: [40, 101],
+        causa: "renuncio",
+        motivo: "tantos",
+      },
+      fecha_inicio: "2026-11-18T10:00:00Z",
+      fecha_fin: "2026-11-18T10:24:13Z",
+    };
+
+    const res = await request(app)
+      .post("/api/interno/partidas")
+      .set("X-Internal-Secret", SECRETO)
+      .send(completo);
+
+    expect(res.status).toBe(201);
+    expect(internoService.registrarPartida).toHaveBeenCalledWith(completo);
+  });
+
+  it("400 con el motivo si un usuario_id no es un UUID", async () => {
+    internoService.registrarPartida.mockRejectedValue(
+      new ErrorHttp(400, "usuario_id de jugador no válido"),
+    );
+
+    const res = await request(app)
+      .post("/api/interno/partidas")
+      .set("X-Internal-Secret", SECRETO)
+      .send({
+        ...body,
+        jugadores: [{ usuario_id: "", posicion: 0, equipo: 0 }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "usuario_id de jugador no válido" });
+  });
+
+  it("404 si la sala no existe", async () => {
+    internoService.registrarPartida.mockRejectedValue(
+      new ErrorHttp(404, "la sala no existe"),
+    );
+
+    const res = await request(app)
+      .post("/api/interno/partidas")
+      .set("X-Internal-Secret", SECRETO)
+      .send(body);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "la sala no existe" });
+  });
+
+  it("409 si la partida de la sala ya estaba registrada (reintento)", async () => {
+    internoService.registrarPartida.mockRejectedValue(
+      new ErrorHttp(409, "la partida de esta sala ya está registrada"),
+    );
+
+    const res = await request(app)
+      .post("/api/interno/partidas")
+      .set("X-Internal-Secret", SECRETO)
+      .send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: "la partida de esta sala ya está registrada",
+    });
+  });
+
+  it("500 genérico si falla algo que no es un ErrorHttp", async () => {
+    internoService.registrarPartida.mockRejectedValue(new Error("bd caída"));
+    const consola = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await request(app)
+      .post("/api/interno/partidas")
+      .set("X-Internal-Secret", SECRETO)
+      .send(body);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "error interno" });
+    consola.mockRestore();
+  });
 });
 
 describe("POST /api/interno/salas/:id/iniciar", () => {

@@ -6,8 +6,12 @@ var salas: Dictionary = {}
 ## Si es true, las consultas tardan un frame (como una petición real).
 var asincrono := false
 var consultas_de_sala := 0
+## Lo que se ha mandado a POST /interno/partidas, un elemento por intento.
 var partidas_registradas: Array[Dictionary] = []
 var salas_iniciadas: Array[String] = []
+## Respuestas para los siguientes registros (PBI-06, reintentos): cada intento
+## consume la primera. Vacía, el backend acepta: { ok: true, codigo: 201 }.
+var respuestas_registro: Array[Dictionary] = []
 
 
 func obtener_sala(sala_id: String) -> Dictionary:
@@ -26,4 +30,6 @@ func iniciar_sala(sala_id: String) -> Dictionary:
 
 func registrar_partida(datos: Dictionary) -> Dictionary:
 	partidas_registradas.append(datos)
+	if not respuestas_registro.is_empty():
+		return respuestas_registro.pop_front()
 	return {"ok": true, "codigo": 201, "datos": null}

@@ -34,11 +34,12 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI-03 — Partida completa de Guiñote | Alta | ✅ Motor de reglas completo y registrado en el servidor de partida |
 | PBI-04 — Partida completa de Mus | Media | ✅ Motor de reglas completo (2 o 4 jugadores), registrado y jugable desde el cliente en la mesa común (PBI-12) |
 | PBI-05 — Partida completa de Tute | Media | ✅ Motor de reglas (2 jugadores y 4 por parejas), registrado y jugable desde el cliente en la mesa común (PBI-12) |
-| PBI-06 — Historial y estadísticas | Media | ⏳ Pendiente (la ruta existe y responde `501`) |
+| PBI-06 — Historial y estadísticas | Media | ✅ Historial de partidas y estadísticas (totales, por juego, rachas y últimos resultados) en el backend y en una pantalla del cliente que se abre desde el lobby; público por defecto, cada jugador puede hacerlo privado |
 | PBI-07 — Ranking de jugadores | Baja | ⏳ Pendiente (la ruta existe y responde `501`) |
-| PBI-08 — Chat en partida | Baja | ⏳ Pendiente (el servidor responde que el chat no está disponible) |
+| PBI-08 — Chat en partida | Baja | ✅ Chat de la mesa, aislado por sala y por su propio canal de ENet, con nombre y color de cada jugador; se conserva al reconectarse y tras la partida hasta que todos vuelven al lobby. Revelar cartas por el chat se puede denunciar: pausa la partida y, si se admite, gana la parte perjudicada por renuncio |
 | PBI-09 — Moderación de salas | Baja | ✅ En la sala de espera el creador ve quién está sentado, puede expulsar a cualquiera antes de empezar (su plaza queda libre) y arranca la partida con EMPEZAR |
 | PBI-12 — Unificación de los tres juegos bajo un mismo estilo visual | Alta | ✅ Guiñote, Tute y Mus, 1 contra 1 y por parejas, en la misma mesa (`game/client/ui/mesa/`) contra el servidor de partida |
+| PBI-13 — Cliente descargable | Media | ✅ Ejecutable único de Windows y Linux, sin Godot ni servidor ni tests; dirección del servidor en `servidor.cfg`; se publica al subir un tag `v*` (sección 11) |
 
 **Todavía no se puede jugar una partida de principio a fin desde el cliente.** Los motores de Guiñote y Mus funcionan y están probados, pero faltan piezas que no pertenecen a ninguna PBI de juego:
 
@@ -118,7 +119,7 @@ La fuente es la Definición de Hecho de la Práctica 1:
 ├── game/                    proyecto Godot (abrir game/project.godot)
 │   ├── client/              solo presentación e input
 │   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales
-│   │   ├── ui/              login, registro, recuperar, lobby, espera, tema visual
+│   │   ├── ui/              login, registro, recuperar, lobby, espera, historial, tema visual
 │   │   │   └── mesa/        la mesa común de los tres juegos (PBI-12): tapete, cartas y pantalla de partida
 │   │   └── scenes/          carta, mesa (cada escena en su carpeta, junto a su script)
 │   ├── server/              lógica autoritativa; ningún script hereda de un nodo visual
@@ -127,7 +128,7 @@ La fuente es la Definición de Hecho de la Práctica 1:
 │   │   ├── sala_activa.gd   una sala: asientos, conexiones y estado de su partida
 │   │   ├── verificador_jwt.gd, cliente_backend.gd
 │   │   └── game_engine/     MotorDeJuego (clase base) + guinote/, mus/, tute/
-│   ├── shared/              Carta, Baraja, CanalRed (RPC único) y MensajesRed
+│   ├── shared/              Carta, Baraja, CanalRed (un RPC por canal: jugadas y chat) y MensajesRed
 │   ├── tests/               tests GUT: unit/ (refleja la ruta del script) e integration/
 │   └── addons/gut/          framework de testing GUT
 ├── infra/nginx/             proxy inverso con TLS delante del backend
@@ -311,7 +312,7 @@ Flujo previsto de principio a fin ([`docs/analisis_funcional_app.md`](docs/anali
 2. **Lobby.** Ve las salas con `GET /api/salas` y crea una (`POST /api/salas`) o se une a otra (`POST /api/salas/:id/unirse`). Quien crea la sala ocupa la posición 0; al unirse, el backend da la primera posición libre.
 3. **Conexión al servidor de partida.** Con la sala completa, el cliente conecta por ENet a `servidor_direccion` y envía `unirse_partida { usuario_id, token, sala_id }`.
 4. **Validación y sala de espera.** El servidor verifica el JWT con el mismo `JWT_SECRET` y pide la sala al backend (`GET /api/interno/salas/:id`). Mientras se espera, todos reciben `sala_actualizada` con quién está sentado. El creador puede expulsar a un jugador (`POST /api/salas/:id/expulsar` + `actualizar_sala`) y, con la sala completa, envía `empezar_partida`: el servidor manda `partida_iniciada` a todos y pasa la sala a `en_curso` (`POST /api/interno/salas/:id/iniciar`).
-5. **Juego.** Cada acción viaja como `{ tipo, payload }` por el único RPC de `CanalRed`. Tras cada acción válida, cada jugador recibe `estado_partida`:
+5. **Juego.** Cada acción viaja como `{ tipo, payload }` por `CanalRed` (el chat, por su propio canal de ENet). Tras cada acción válida, cada jugador recibe `estado_partida`:
    - lleva su vista filtrada (nunca las cartas de los demás);
    - incluye `jugadas_validas`, la lista de lo que puede hacer en ese momento, para que el cliente active cartas y botones sin conocer las reglas.
 6. **Resultado.** Al terminar, todos reciben `partida_terminada`, y el servidor guarda el resultado con `POST /api/interno/partidas`.
@@ -373,7 +374,7 @@ Workflows de `.github/workflows/`:
 |---|---|---|
 | `Backend CI` (`backend-ci.yml`) | PR y push a `main` que tocan `backend/` | `npm ci`, `npm run lint`, `npm run format:check`, `npm test` con Node 20 |
 | `Godot CI` (`godot-ci.yml`) | PR y push a `main` que tocan `game/` | Todos los tests GUT en headless con Godot 4.7.2 |
-| `Build and release client` (`godot-release.yml`) | Al subir un tag `v*` | Exporta el cliente para Windows y Linux y publica una GitHub Release con los ejecutables |
+| `Build and release client` (`godot-release.yml`) | Al subir un tag `v*`; en las PR que tocan el cliente o la exportación; y a mano (*Actions → Run workflow*) | Exporta el cliente para Windows y Linux y comprueba que no lleva tests, GUT ni servidor. Con un tag, además publica una GitHub Release; en una PR o a mano, los ejecutables quedan como artefacto de la ejecución |
 
 **Publicar una versión del cliente.** Las versiones no tienen rama propia: salen de un tag sobre `main`.
 
@@ -383,13 +384,30 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Los presets de exportación están en `game/export_presets.cfg`: `Windows Desktop` → `build/cartas-online-windows.exe` y `Linux` → `build/cartas-online-linux.x86_64`. Para exportar en local hacen falta las plantillas de exportación de Godot 4.7.2:
+Los presets de exportación están en `game/export_presets.cfg`: `Windows Desktop` → `build/cartas-online-windows.exe` y `Linux` → `build/cartas-online-linux.x86_64`. Cada uno es un único fichero (con el `.pck` incrustado) que **no incluye** el servidor de partida, los tests ni GUT. Para exportar en local hacen falta las plantillas de exportación de Godot 4.7.2 (Editor → *Gestionar plantillas de exportación*, o el `.tpz` de la [página de la versión](https://github.com/godotengine/godot/releases/tag/4.7.2-stable)):
 
 ```bash
 cd game
 godot --headless --export-release "Windows Desktop" ../build/cartas-online-windows.exe
 godot --headless --export-release "Linux" ../build/cartas-online-linux.x86_64
 ```
+
+### Descargar y jugar (sin tener Godot)
+
+Para quien solo quiere jugar, con el cliente publicado en [Releases](../../releases):
+
+1. Descargad `cartas-online-windows.exe` (o `cartas-online-linux.x86_64`), `LEEME.txt` y `servidor.cfg.ejemplo` en una misma carpeta. No hace falta instalar nada.
+2. Copiad `servidor.cfg.ejemplo` como `servidor.cfg` y poned la dirección del backend que os hayan dado:
+   ```ini
+   [servidor]
+   backend_url="http://192.168.1.20:3000/api"
+   ```
+   Sin `servidor.cfg` (ni variable `BACKEND_URL`), el cliente usa `http://localhost:3000/api`, que solo vale si tenéis el backend en vuestro propio ordenador (sección 5).
+3. Abrid el ejecutable, registraos e iniciad sesión. En el lobby, crear una sala o unirse a una; la partida empieza sola al llenarse.
+
+En Windows puede salir "Windows protegió su PC" porque el ejecutable no está firmado: *Más información → Ejecutar de todas formas*. Las instrucciones para jugadores están también en [`cliente/LEEME.txt`](cliente/LEEME.txt).
+
+**Probar un ejecutable sin publicar nada:** en GitHub, *Actions → Build and release client → Run workflow* (o abrir una PR que toque el cliente); al terminar, el artefacto `cartas-online` contiene los ejecutables.
 
 ---
 

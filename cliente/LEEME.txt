@@ -1,0 +1,33 @@
+CARTAS ONLINE - Guiñote, Mus y Tute
+===================================
+
+Cómo jugar (Windows)
+--------------------
+1. Descarga cartas-online-windows.exe y ponlo en una carpeta cualquiera.
+   No hace falta instalar nada ni tener Godot.
+2. Abre servidor.cfg.ejemplo con el Bloc de notas, escribe la dirección del
+   servidor que te hayan dado y guárdalo como "servidor.cfg" en la MISMA
+   carpeta que el .exe. (Quien organiza la partida te dirá la dirección.)
+3. Haz doble clic en cartas-online-windows.exe.
+4. Regístrate (correo, nombre y contraseña) e inicia sesión.
+5. En el lobby, crea una sala (elige juego y número de jugadores) o únete a
+   una. La partida empieza sola cuando la sala está llena.
+
+Si Windows muestra "Windows protegió su PC": pulsa "Más información" y luego
+"Ejecutar de todas formas". Pasa porque el programa no está firmado, no porque
+sea peligroso.
+
+Si no hay servidor.cfg, el programa intenta conectarse a un servidor en tu
+propio ordenador (http://localhost:3000/api), que solo funciona si lo tienes
+arrancado (ver README del proyecto).
+
+Linux
+-----
+Descarga cartas-online-linux.x86_64, dale permiso de ejecución
+(chmod +x cartas-online-linux.x86_64) y ejecútalo. servidor.cfg va igual.
+
+Problemas frecuentes
+--------------------
+- "No se pudo conectar": la dirección de servidor.cfg está mal, o el servidor
+  no está encendido. Comprueba que empieza por http:// o https:// y acaba en /api.
+- La partida no empieza: faltan jugadores en la sala.

@@ -27,6 +27,12 @@ const EMPEZAR_PARTIDA := "empezar_partida"
 ## Sala de espera: pide al servidor que vuelva a leer la sala del backend
 ## (p. ej. tras expulsar a alguien por REST).
 const ACTUALIZAR_SALA := "actualizar_sala"
+## Denuncia de un mensaje del chat por revelar cartas o hacer señas (PBI-08):
+## la hace un rival de quien lo escribió y pausa la partida hasta que la parte
+## denunciada responde o pasa un minuto.
+const DENUNCIAR_CHAT := "denunciar_chat"
+const ADMITIR_DENUNCIA := "admitir_denuncia"
+const NO_ADMITIR_DENUNCIA := "no_admitir_denuncia"
 
 # Servidor → cliente
 ## Quién está sentado en la sala de espera y quién es el creador (PBI-09).
@@ -35,7 +41,15 @@ const PARTIDA_INICIADA := "partida_iniciada"
 const ESTADO_PARTIDA := "estado_partida"
 const PARTIDA_TERMINADA := "partida_terminada"
 const CHAT_MENSAJE := "chat_mensaje"
+## Todos los mensajes del chat de la sala, al unirse o reconectarse (PBI-08).
+const CHAT_HISTORIAL := "chat_historial"
+## Una denuncia empieza (pendiente) o se resuelve (admitida, no_admitida, caducada).
+const DENUNCIA_CHAT := "denuncia_chat"
 const ERROR := "error"
+
+## Los que van por el canal de ENet del chat (ver CanalRed.CANAL_CHAT). Las
+## denuncias no: pausan y reanudan la partida, así que van con las jugadas.
+const TIPOS_CHAT := [CHAT_ENVIAR, CHAT_MENSAJE, CHAT_HISTORIAL]
 
 
 static func crear(tipo: String, payload: Dictionary = {}) -> Dictionary:

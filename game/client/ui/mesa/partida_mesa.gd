@@ -17,6 +17,8 @@ const ESCENA_LOBBY := "res://client/ui/lobby/lobby.tscn"
 const ESCENA_TAPETE := preload("res://client/ui/mesa/tapete_mesa.tscn")
 const Textos := preload("res://client/ui/mesa/textos_mesa.gd")
 const CuentaAtras := preload("res://client/ui/mesa/cuenta_atras.gd")
+const ChatMesa := preload("res://client/ui/mesa/chat_mesa.gd")
+const ANUNCIO_PAUSA := "Partida en pausa: denuncia en el chat"
 
 ## En el Mus, al acabar cada mano se enseñan las cartas este tiempo (por pausa_baza).
 const FACTOR_PAUSA_MANO := 2.5
@@ -34,6 +36,8 @@ var autojugar := false
 var tapete: Control
 ## Tiempo límite para decidir (PBI-14): cuánto le queda a quien tiene que jugar.
 var cuenta_atras: Label
+## Chat de la mesa (PBI-08), abajo a la izquierda.
+var chat: Control
 
 var _boton_lobby: Button
 ## Lo que queda por enseñar, en orden: { "estado": … } o { "resultado": … }.
@@ -45,6 +49,8 @@ var _configurada := false
 var _terminada := false
 var _juego := ""
 var _nombres: Array = []
+## Hay una denuncia del chat pendiente: nadie juega hasta que se resuelva.
+var _en_pausa := false
 
 ## Cómo estaba la ventana antes de abrir la primera mesa, y cuántas hay abiertas
 ## (en los tests hay varias a la vez): se restaura al cerrar la última.
@@ -61,11 +67,15 @@ func _ready() -> void:
 	tapete.jugada_solicitada.connect(_on_jugada_solicitada)
 	_crear_cuenta_atras()
 	_crear_boton_lobby()
+	_crear_chat()
 
 	red.estado_actualizado.connect(_on_estado_recibido)
 	red.error_recibido.connect(_on_error_recibido)
 	red.partida_terminada.connect(_on_partida_terminada)
 	red.desconectado_del_servidor.connect(_on_servidor_perdido)
+	red.denuncia_actualizada.connect(_on_denuncia_actualizada)
+	# Al reconectarse en plena pausa, la denuncia ya ha llegado (ClienteRed la guarda).
+	_en_pausa = not red.denuncia.is_empty()
 	# El primer estado suele llegar antes de entrar en esta escena (ClienteRed
 	# lo guarda): se pinta lo que ya haya.
 	if not red.ultimo_estado.is_empty():
@@ -106,6 +116,14 @@ func _crear_cuenta_atras() -> void:
 	add_child(cuenta_atras)
 
 
+func _crear_chat() -> void:
+	chat = ChatMesa.new()
+	chat.name = "Chat"
+	chat.red = red
+	add_child(chat)
+	chat.configurar(red.config.get("jugadores", []), _mi_asiento())
+
+
 func _crear_boton_lobby() -> void:
 	_boton_lobby = Button.new()
 	_boton_lobby.name = "BotonVolverLobby"
@@ -123,7 +141,7 @@ func _crear_boton_lobby() -> void:
 func _on_estado_recibido(estado: Dictionary) -> void:
 	# En cuanto llega, no cuando se enseña: el tiempo corre aunque la mesa aún
 	# esté mostrando la baza anterior.
-	if not _terminada:
+	if not _terminada and not _en_pausa:
 		cuenta_atras.actualizar(estado, _mi_asiento(), red.config.get("jugadores", []).size())
 	_cola.append({"estado": estado})
 	_procesar_cola()
@@ -144,7 +162,26 @@ func _on_error_recibido(mensaje: String) -> void:
 	tapete.avisar_error(mensaje)
 	tapete.devolver_carta_rechazada()
 	if not _procesando and not _terminada and not _estado_en_mesa.is_empty():
-		tapete.actualizar_vista(_estado_en_mesa, _estado_en_mesa.get("jugadas_validas", []))
+		tapete.actualizar_vista(_estado_en_mesa, _jugadas_de(_estado_en_mesa))
+
+
+## Denuncia del chat (PBI-08): mientras está pendiente, la partida está en
+## pausa: no corre la cuenta atrás ni se ofrece ninguna jugada. Al resolverse no
+## hay que hacer nada más: si se sigue jugando, el servidor manda un
+## estado_partida nuevo, y si se admite, partida_terminada.
+func _on_denuncia_actualizada(denuncia: Dictionary) -> void:
+	_en_pausa = denuncia.get("estado") == "pendiente" and not _terminada
+	if not _en_pausa:
+		return
+	cuenta_atras.parar()
+	if not _procesando and not _estado_en_mesa.is_empty():
+		tapete.actualizar_vista(_estado_en_mesa, [])
+	tapete.anunciar(-1, ANUNCIO_PAUSA)
+
+
+## Lo que se puede hacer con [param estado] en la mesa: nada en pausa.
+func _jugadas_de(estado: Dictionary) -> Array:
+	return [] if _en_pausa else estado.get("jugadas_validas", [])
 
 
 func _on_servidor_perdido() -> void:
@@ -180,7 +217,7 @@ func _mostrar_estado(estado: Dictionary) -> void:
 		await _mostrar_jugada(jugada, anterior, estado)
 		if not is_inside_tree() or _terminada:
 			return
-	tapete.actualizar_vista(estado, estado.get("jugadas_validas", []))
+	tapete.actualizar_vista(estado, _jugadas_de(estado))
 	_estado_en_mesa = estado
 
 
@@ -268,7 +305,9 @@ func _on_jugada_solicitada(jugada: Dictionary) -> void:
 
 func _terminar(texto: String) -> void:
 	_terminada = true
+	_en_pausa = false
 	cuenta_atras.parar()
+	chat.marcar_terminada()
 	tapete.mostrar_resultado(texto)
 	_boton_lobby.position = Vector2(tapete.get_viewport_rect().size.x - 200.0, 12.0)
 	_boton_lobby.show()

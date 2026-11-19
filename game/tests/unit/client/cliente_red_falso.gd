@@ -11,6 +11,11 @@ signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
 signal error_recibido(mensaje: String)
+## Chat de la partida (PBI-08): un mensaje nuevo, la lista entera al unirse o
+## reconectarse, y una denuncia que empieza o se resuelve.
+signal chat_recibido(mensaje: Dictionary)
+signal chat_reiniciado(mensajes: Array)
+signal denuncia_actualizada(denuncia: Dictionary)
 
 var sala_id := ""
 var servidor_direccion := "localhost:9000"
@@ -18,6 +23,8 @@ var config: Dictionary = {}
 var sala: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
+var chat: Array = []
+var denuncia: Dictionary = {}
 
 ## Lista de [nombre_de_funcion, ...argumentos] en el orden en que se llamaron.
 var llamadas: Array = []

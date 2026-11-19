@@ -13,6 +13,11 @@ signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
 signal error_recibido(mensaje: String)
+## Chat de la partida (PBI-08): un mensaje nuevo, la lista entera al unirse o
+## reconectarse, y una denuncia que empieza o se resuelve.
+signal chat_recibido(mensaje: Dictionary)
+signal chat_reiniciado(mensajes: Array)
+signal denuncia_actualizada(denuncia: Dictionary)
 
 var sala_id := ""
 var servidor_direccion := "bucle"
@@ -20,6 +25,8 @@ var config: Dictionary = {}
 var sala: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
+var chat: Array = []
+var denuncia: Dictionary = {}
 
 var servidor: RoomManager
 var peer := 0
@@ -76,3 +83,13 @@ func _on_mensaje_para(para: int, mensaje: Dictionary) -> void:
 		MensajesRed.ERROR:
 			errores.append(payload.get("mensaje", ""))
 			error_recibido.emit(payload.get("mensaje", ""))
+		MensajesRed.CHAT_MENSAJE:
+			chat.append(payload)
+			chat_recibido.emit(payload)
+		MensajesRed.CHAT_HISTORIAL:
+			var mensajes: Variant = payload.get("mensajes", [])
+			chat = mensajes if mensajes is Array else []
+			chat_reiniciado.emit(chat)
+		MensajesRed.DENUNCIA_CHAT:
+			denuncia = payload if payload.get("estado") == "pendiente" else {}
+			denuncia_actualizada.emit(payload)

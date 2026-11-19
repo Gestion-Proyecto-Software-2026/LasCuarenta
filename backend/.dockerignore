@@ -1,8 +1,6 @@
-# Lo que no debe entrar en la imagen del backend.
-# node_modules: la imagen instala las suyas (npm ci, en Linux). Si se copian las
-# del ordenador de quien construye (p. ej. Windows), el binario nativo de bcrypt
-# no carga y el backend se cae al arrancar ("invalid ELF header").
+# Las dependencias se instalan dentro de la imagen (npm ci en el Dockerfile).
+# Sin esto, `COPY . .` pisaría esos node_modules con los del host (p. ej. los de
+# Windows tras un `npm install` local) y bcrypt fallaría con "invalid ELF header".
 node_modules
-# Secretos locales: en Docker las variables vienen de docker-compose.yml.
 .env
 coverage

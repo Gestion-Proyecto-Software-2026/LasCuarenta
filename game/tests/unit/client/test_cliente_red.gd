@@ -86,3 +86,48 @@ func test_error_recibido_emite_el_mensaje() -> void:
 	assert_signal_emitted_with_parameters(red, "error_recibido", ["La sala no existe"])
 
 
+
+
+# --- Chat de la partida (PBI-08) ---
+
+func test_chat_mensaje_se_guarda_y_emite_la_senal() -> void:
+	watch_signals(red)
+	var mensaje := {"id": 1, "posicion": 1, "nombre": "Luis", "mensaje": "hola"}
+
+	red._on_mensaje(1, MensajesRed.crear(MensajesRed.CHAT_MENSAJE, mensaje))
+
+	assert_eq(red.chat, [mensaje])
+	assert_signal_emitted_with_parameters(red, "chat_recibido", [mensaje])
+
+
+func test_chat_historial_sustituye_el_chat_guardado() -> void:
+	red.chat = [{"id": 9}]
+	watch_signals(red)
+	var mensajes := [{"id": 1}, {"id": 2}]
+
+	red._on_mensaje(1, MensajesRed.crear(MensajesRed.CHAT_HISTORIAL, {"mensajes": mensajes}))
+
+	assert_eq(red.chat, mensajes)
+	assert_signal_emitted(red, "chat_reiniciado")
+
+
+func test_denuncia_pendiente_se_guarda_y_al_resolverse_se_olvida() -> void:
+	watch_signals(red)
+	var pendiente := {"estado": "pendiente", "mensaje_id": 1, "segundos": 60.0}
+
+	red._on_mensaje(1, MensajesRed.crear(MensajesRed.DENUNCIA_CHAT, pendiente))
+	assert_eq(red.denuncia, pendiente)
+	red._on_mensaje(1, MensajesRed.crear(MensajesRed.DENUNCIA_CHAT, {"estado": "caducada", "mensaje_id": 1}))
+
+	assert_eq(red.denuncia, {})
+	assert_signal_emit_count(red, "denuncia_actualizada", 2)
+
+
+func test_desconectar_olvida_el_chat_y_la_denuncia() -> void:
+	red.chat = [{"id": 1}]
+	red.denuncia = {"estado": "pendiente"}
+
+	red.desconectar()
+
+	assert_eq(red.chat, [])
+	assert_eq(red.denuncia, {})

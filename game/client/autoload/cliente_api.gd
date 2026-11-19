@@ -6,6 +6,9 @@ extends Node
 ## Contrato completo en docs/analisis_funcional_app.md §5.
 
 const URL_BASE_POR_DEFECTO := "http://localhost:3000/api"
+## Fichero junto al ejecutable con la dirección del servidor, para quien juega
+## con el cliente descargable (PBI-13) y no puede definir variables de entorno.
+const ARCHIVO_CONFIG := "servidor.cfg"
 const TIEMPO_MAXIMO_S := 10.0
 
 var url_base: String
@@ -13,10 +16,32 @@ var token: String = ""
 var usuario: Dictionary = {}
 
 
+## Dirección del backend, por este orden: la variable de entorno BACKEND_URL, el
+## fichero servidor.cfg junto al ejecutable y, si no hay ninguno, localhost.
 func _ready() -> void:
 	url_base = OS.get_environment("BACKEND_URL")
 	if url_base.is_empty():
+		url_base = url_desde_config(OS.get_executable_path().get_base_dir().path_join(ARCHIVO_CONFIG))
+	if url_base.is_empty():
 		url_base = URL_BASE_POR_DEFECTO
+	# Para saber a qué servidor intenta conectarse (útil al dar soporte).
+	print("Backend: ", url_base)
+
+
+## Lee [code]backend_url[/code] de la sección [code][servidor][/code] de un
+## fichero de configuración. Devuelve "" si el fichero no existe o la dirección
+## no es válida (debe empezar por http:// o https://).
+static func url_desde_config(ruta: String) -> String:
+	var config := ConfigFile.new()
+	if config.load(ruta) != OK:
+		return ""
+	var url := str(config.get_value("servidor", "backend_url", "")).strip_edges()
+	if url.is_empty():
+		return ""
+	if not (url.begins_with("http://") or url.begins_with("https://")):
+		push_warning("%s: backend_url debe empezar por http:// o https:// (era '%s'); se ignora" % [ruta, url])
+		return ""
+	return url.rstrip("/")
 
 
 func esta_autenticado() -> bool:
@@ -59,6 +84,29 @@ func restablecer(email: String, codigo: String, password: String) -> Dictionary:
 	})
 
 
+## Partidas terminadas de un jugador, de la más reciente a la más antigua
+## (PBI-06). [param usuario_id] "me" es el usuario de la sesión; [param juego]
+## vacío las trae de todos los juegos.
+func historial(usuario_id: String = "me", juego: String = "") -> Dictionary:
+	var ruta := "/usuarios/%s/historial" % usuario_id.uri_encode()
+	if not juego.is_empty():
+		ruta += "?juego=" + juego.uri_encode()
+	return await _pedir(HTTPClient.METHOD_GET, ruta)
+
+
+func estadisticas(usuario_id: String = "me") -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_GET, "/usuarios/%s/estadisticas" % usuario_id.uri_encode())
+
+
+## Si el historial del usuario de la sesión lo pueden ver los demás.
+func privacidad() -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_GET, "/usuarios/me/privacidad")
+
+
+func cambiar_privacidad(publico: bool) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_PUT, "/usuarios/me/privacidad", {"historial_publico": publico})
+
+
 func listar_salas(juego: String = "guinote") -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_GET, "/salas?juego=" + juego.uri_encode())
 
@@ -90,6 +138,14 @@ func salir_sala(sala_id: String) -> Dictionary:
 func expulsar_jugador(sala_id: String, usuario_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/expulsar" % sala_id.uri_encode(),
 		{"usuario_id": usuario_id})
+
+
+## Clasificación pública (PBI-07). [param juego] vacío agrega todos los juegos.
+func obtener_ranking(juego: String = "guinote") -> Dictionary:
+	var ruta := "/ranking"
+	if not juego.is_empty():
+		ruta += "?juego=" + juego.uri_encode()
+	return await _pedir(HTTPClient.METHOD_GET, ruta)
 
 
 func _hash_password(password: String) -> String:
