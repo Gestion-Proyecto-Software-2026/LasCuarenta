@@ -37,7 +37,7 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI-06 — Historial y estadísticas | Media | ✅ Historial de partidas y estadísticas (totales, por juego, rachas y últimos resultados) en el backend y en una pantalla del cliente que se abre desde el lobby; público por defecto, cada jugador puede hacerlo privado |
 | PBI-07 — Ranking de jugadores | Baja | ⏳ Pendiente (la ruta existe y responde `501`) |
 | PBI-08 — Chat en partida | Baja | ✅ Chat de la mesa, aislado por sala y por su propio canal de ENet, con nombre y color de cada jugador; se conserva al reconectarse y tras la partida hasta que todos vuelven al lobby. Revelar cartas por el chat se puede denunciar: pausa la partida y, si se admite, gana la parte perjudicada por renuncio |
-| PBI-09 — Moderación de salas | Baja | ⏳ Pendiente (`POST /salas/:id/expulsar` responde `501`) |
+| PBI-09 — Moderación de salas | Baja | ✅ En la sala de espera el creador ve quién está sentado, puede expulsar a cualquiera antes de empezar (su plaza queda libre) y arranca la partida con EMPEZAR |
 | PBI-12 — Unificación de los tres juegos bajo un mismo estilo visual | Alta | ✅ Guiñote, Tute y Mus, 1 contra 1 y por parejas, en la misma mesa (`game/client/ui/mesa/`) contra el servidor de partida |
 | PBI-13 — Cliente descargable | Media | ✅ Ejecutable único de Windows y Linux, sin Godot ni servidor ni tests; dirección del servidor en `servidor.cfg`; se publica al subir un tag `v*` (sección 11) |
 
@@ -311,7 +311,7 @@ Flujo previsto de principio a fin ([`docs/analisis_funcional_app.md`](docs/anali
 1. **Login.** El usuario abre el cliente e inicia sesión: `POST /api/auth/login`. El cliente envía el **SHA-256 de la contraseña** (`password_hash`), nunca la contraseña en claro, y el backend le aplica además `bcrypt` antes de guardarla.
 2. **Lobby.** Ve las salas con `GET /api/salas` y crea una (`POST /api/salas`) o se une a otra (`POST /api/salas/:id/unirse`). Quien crea la sala ocupa la posición 0; al unirse, el backend da la primera posición libre.
 3. **Conexión al servidor de partida.** Con la sala completa, el cliente conecta por ENet a `servidor_direccion` y envía `unirse_partida { usuario_id, token, sala_id }`.
-4. **Validación.** El servidor verifica el JWT con el mismo `JWT_SECRET` y pide la sala al backend (`GET /api/interno/salas/:id`). Cuando están todos, envía `partida_iniciada`.
+4. **Validación y sala de espera.** El servidor verifica el JWT con el mismo `JWT_SECRET` y pide la sala al backend (`GET /api/interno/salas/:id`). Mientras se espera, todos reciben `sala_actualizada` con quién está sentado. El creador puede expulsar a un jugador (`POST /api/salas/:id/expulsar` + `actualizar_sala`) y, con la sala completa, envía `empezar_partida`: el servidor manda `partida_iniciada` a todos y pasa la sala a `en_curso` (`POST /api/interno/salas/:id/iniciar`).
 5. **Juego.** Cada acción viaja como `{ tipo, payload }` por `CanalRed` (el chat, por su propio canal de ENet). Tras cada acción válida, cada jugador recibe `estado_partida`:
    - lleva su vista filtrada (nunca las cartas de los demás);
    - incluye `jugadas_validas`, la lista de lo que puede hacer en ese momento, para que el cliente active cartas y botones sin conocer las reglas.

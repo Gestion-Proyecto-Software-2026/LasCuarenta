@@ -26,7 +26,7 @@ func _preparar(capacidad: int) -> void:
 	for posicion in capacidad:
 		participantes.append({"usuario_id": _usuario(posicion), "posicion": posicion, "equipo": posicion % 2})
 	backend.salas[SALA] = {
-		"id": SALA, "juego": "mus", "estado": "esperando", "capacidad": capacidad,
+		"id": SALA, "juego": "mus", "estado": "esperando", "capacidad": capacidad, "creador_id": _usuario(0),
 		"participantes": participantes,
 	}
 	rm = RoomManager.new(backend, SECRETO, MainServer.MOTORES)
@@ -62,6 +62,7 @@ func _jugar_partida(capacidad: int, semilla: int) -> int:
 			"token": JwtDePrueba.firmar({"id": _usuario(posicion)}, SECRETO),
 			"sala_id": SALA,
 		}))
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = semilla
 	var enviados := 0

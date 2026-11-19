@@ -134,6 +134,12 @@ func salir_sala(sala_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/unirse" % sala_id.uri_encode())
 
 
+## Solo el creador de la sala, antes de empezar la partida (PBI-09).
+func expulsar_jugador(sala_id: String, usuario_id: String) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/expulsar" % sala_id.uri_encode(),
+		{"usuario_id": usuario_id})
+
+
 ## Clasificación pública (PBI-07). [param juego] vacío agrega todos los juegos.
 func obtener_ranking(juego: String = "guinote") -> Dictionary:
 	var ruta := "/ranking"

@@ -30,7 +30,7 @@ async function obtenerSala(salaId) {
   }
 
   const { rows: salas } = await pool.query(
-    "SELECT id, juego, estado, capacidad FROM salas WHERE id = $1",
+    "SELECT id, juego, estado, capacidad, creador_id FROM salas WHERE id = $1",
     [salaId],
   );
   const sala = salas[0];
@@ -284,4 +284,25 @@ function traducirErrorBd(err) {
   return err;
 }
 
-module.exports = { obtenerSala, registrarPartida };
+// POST /api/interno/salas/:id/iniciar — el servidor de partida avisa de que la
+// partida ha empezado (el creador pulsó EMPEZAR): la sala pasa a `en_curso` y
+// desde entonces ya no se puede expulsar, unirse ni abandonar (PBI-09).
+// Idempotente: si ya estaba en curso no hace nada.
+async function iniciarSala(salaId) {
+  if (typeof salaId !== "string" || !UUID_RE.test(salaId)) {
+    throw new ErrorHttp(400, "id de sala no válido");
+  }
+  const { rows } = await pool.query("SELECT estado FROM salas WHERE id = $1", [
+    salaId,
+  ]);
+  if (!rows[0]) throw new ErrorHttp(404, "la sala no existe");
+  if (rows[0].estado === "finalizada") {
+    throw new ErrorHttp(409, "la sala ya ha terminado");
+  }
+  await pool.query(
+    "UPDATE salas SET estado = 'en_curso' WHERE id = $1 AND estado = 'esperando'",
+    [salaId],
+  );
+}
+
+module.exports = { obtenerSala, registrarPartida, iniciarSala };

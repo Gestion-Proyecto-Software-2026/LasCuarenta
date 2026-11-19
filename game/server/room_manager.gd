@@ -16,6 +16,7 @@ signal mensaje_para(peer_id: int, mensaje: Dictionary)
 signal expulsar(peer_id: int)
 
 const ESTADOS_SALA_JUGABLES := ["esperando", "en_curso"]
+const MENSAJE_EXPULSADO := "El creador de la sala te ha expulsado"
 ## Tiempo límite para decidir (PBI-14, issue #37): segundos que tiene cada
 ## jugador del que depende la partida antes de que el servidor juegue por él.
 const SEGUNDOS_POR_TURNO_POR_DEFECTO := 45.0
@@ -90,8 +91,10 @@ func conectar(peer_id: int) -> void:
 
 
 ## El asiento queda libre para que el mismo usuario pueda reconectarse con
-## otra conexión; la partida no se cancela. Si la partida ya había terminado y
-## era el último en irse, la sala se borra y con ella su chat (HU-035, CA-131).
+## otra conexión; la partida no se cancela. En la sala de espera se avisa al
+## resto (puede que haya abandonado la sala, así que se relee del backend).
+## Si la partida ya había terminado y era el último en irse, la sala se borra
+## y con ella su chat (HU-035, CA-131).
 func desconectar(peer_id: int) -> void:
 	_peers_conectados.erase(peer_id)
 	var sala := _sala_de_chat(peer_id)
@@ -100,6 +103,8 @@ func desconectar(peer_id: int) -> void:
 		if sala.terminada and sala.peer_en_posicion.is_empty():
 			_salas_terminadas.erase(sala.sala_id)
 	_sala_de_peer.erase(peer_id)
+	if sala != null and not sala.empezada():
+		_refrescar_espera(sala)
 
 
 func recibir(peer_id: int, mensaje: Dictionary) -> void:
@@ -119,6 +124,10 @@ func recibir(peer_id: int, mensaje: Dictionary) -> void:
 			_responder_denuncia(peer_id, true)
 		MensajesRed.NO_ADMITIR_DENUNCIA:
 			_responder_denuncia(peer_id, false)
+		MensajesRed.EMPEZAR_PARTIDA:
+			_pedir_empezar(peer_id)
+		MensajesRed.ACTUALIZAR_SALA:
+			_pedir_actualizar(peer_id)
 		_:
 			_jugar(peer_id, tipo, payload)
 
@@ -174,8 +183,9 @@ func _unirse(peer_id: int, payload: Dictionary) -> void:
 		# Reconexión: se le pone al día solo a él.
 		_enviar_inicio(sala, posicion)
 		_enviar_estado(sala, posicion)
-	elif sala.todos_conectados():
-		_empezar(sala)
+	else:
+		# Ya no empieza sola: la arranca el creador con empezar_partida (PBI-09).
+		_difundir_espera(sala)
 	_poner_al_dia_del_chat(sala, posicion)
 
 
@@ -230,6 +240,8 @@ func _crear_sala(sala_id: String, datos: Dictionary) -> Variant:
 	sala.sala_id = sala_id
 	sala.juego = datos["juego"]
 	sala.motor = script.new()
+	var creador: Variant = datos.get("creador_id", "")
+	sala.creador_id = creador if creador is String else ""
 	var capacidad: Variant = datos.get("capacidad")
 	if not (capacidad is float or capacidad is int) or int(capacidad) not in sala.motor.jugadores_admitidos():
 		return "La sala no tiene un número de jugadores válido para este juego"
@@ -253,10 +265,12 @@ func _crear_sala(sala_id: String, datos: Dictionary) -> Variant:
 	return sala
 
 
-## Vuelve a pedir al backend los participantes de [param sala] y añade los que
-## falten en la caché (ver comentario en [method _unirse]). Ignora la
-## respuesta si falla o si la sala ya no está activa (p. ej. terminó mientras
-## se consultaba): quien llame vuelve a comprobar `posicion_de_usuario` después.
+## Vuelve a pedir al backend los participantes de [param sala] (ver comentario
+## en [method _unirse]). Antes de empezar, la caché se sustituye por lo que diga
+## el backend: quien ya no está (expulsado por el creador, PBI-09) pierde el
+## asiento y se le desconecta. Ya empezada, solo se añaden los que falten.
+## Ignora la respuesta si falla o si la sala ya no está activa (p. ej. terminó
+## mientras se consultaba): quien llame vuelve a comprobar `posicion_de_usuario` después.
 func _actualizar_participantes(sala: SalaActiva) -> void:
 	var respuesta: Dictionary = await _backend.obtener_sala(sala.sala_id)
 	if not salas_activas.has(sala.sala_id) or not respuesta.get("ok", false) \
@@ -264,6 +278,9 @@ func _actualizar_participantes(sala: SalaActiva) -> void:
 		return
 	var participantes: Variant = respuesta["datos"].get("participantes")
 	if not participantes is Array:
+		return
+	if not sala.empezada():
+		_sustituir_participantes(sala, respuesta["datos"], participantes)
 		return
 	for participante: Variant in participantes:
 		if not participante is Dictionary:
@@ -282,6 +299,92 @@ func _actualizar_participantes(sala: SalaActiva) -> void:
 		sala.nombre_en_posicion[pos_int] = _nombre_de(participante)
 
 
+## Sala de espera: deja los asientos exactamente como los tiene el backend y
+## expulsa a los conectados que ya no figuran en su asiento.
+func _sustituir_participantes(sala: SalaActiva, datos: Dictionary, participantes: Array) -> void:
+	var posicion_de_usuario := {}
+	var usuario_en_posicion := {}
+	var nombre_en_posicion := {}
+	for participante: Variant in participantes:
+		if not participante is Dictionary:
+			continue
+		var usuario_id: Variant = participante.get("usuario_id")
+		var posicion: Variant = participante.get("posicion")
+		if not usuario_id is String or not (posicion is float or posicion is int):
+			continue
+		var pos_int := int(posicion)
+		if pos_int < 0 or pos_int >= sala.capacidad \
+				or posicion_de_usuario.has(usuario_id) or usuario_en_posicion.has(pos_int):
+			continue
+		posicion_de_usuario[usuario_id] = pos_int
+		usuario_en_posicion[pos_int] = usuario_id
+		nombre_en_posicion[pos_int] = _nombre_de(participante)
+
+	for posicion: int in sala.peer_en_posicion.keys():
+		if usuario_en_posicion.get(posicion, "") == sala.usuario_en_posicion.get(posicion, ""):
+			continue
+		var peer: int = sala.peer_en_posicion[posicion]
+		sala.peer_en_posicion.erase(posicion)
+		_sala_de_peer.erase(peer)
+		_rechazar(peer, MENSAJE_EXPULSADO)
+
+	sala.posicion_de_usuario = posicion_de_usuario
+	sala.usuario_en_posicion = usuario_en_posicion
+	sala.nombre_en_posicion = nombre_en_posicion
+	var creador: Variant = datos.get("creador_id")
+	if creador is String:
+		sala.creador_id = creador
+
+
+## Relee la sala del backend y manda la lista actualizada a los que esperan.
+func _refrescar_espera(sala: SalaActiva) -> void:
+	await _actualizar_participantes(sala)
+	if salas_activas.has(sala.sala_id) and not sala.empezada():
+		_difundir_espera(sala)
+
+
+func _difundir_espera(sala: SalaActiva) -> void:
+	var vista := sala.vista_espera()
+	for posicion: int in sala.peer_en_posicion:
+		_enviar(sala.peer_en_posicion[posicion], MensajesRed.SALA_ACTUALIZADA, vista)
+
+
+## Cualquiera de la sala de espera puede pedir que se relea (el creador lo hace
+## tras expulsar a alguien por REST): el backend es la fuente de verdad.
+func _pedir_actualizar(peer_id: int) -> void:
+	var sala := _sala_del_peer(peer_id)
+	if sala == null:
+		_enviar_error(peer_id, "Primero tienes que unirte a una partida")
+		return
+	if sala.empezada():
+		return
+	await _refrescar_espera(sala)
+
+
+## Solo el creador, con todos los asientos ocupados y conectados. Antes se relee
+## la sala del backend, por si alguien ha sido expulsado o ha salido.
+func _pedir_empezar(peer_id: int) -> void:
+	var sala := _sala_del_peer(peer_id)
+	if sala == null:
+		_enviar_error(peer_id, "Primero tienes que unirte a una partida")
+		return
+	if sala.empezada():
+		_enviar_error(peer_id, "La partida ya ha empezado")
+		return
+	if sala.usuario_en_posicion.get(sala.posicion_de_peer(peer_id), "") != sala.creador_id:
+		_enviar_error(peer_id, "Solo el creador de la sala puede empezar la partida")
+		return
+	await _actualizar_participantes(sala)
+	# Mientras se consultaba pudo cambiar todo: que se fuera, que otro la empezara...
+	if _sala_del_peer(peer_id) != sala or sala.empezada():
+		return
+	if not sala.todos_conectados():
+		_difundir_espera(sala)
+		_enviar_error(peer_id, "Faltan jugadores: la sala tiene que estar completa para empezar")
+		return
+	_empezar(sala)
+
+
 func _empezar(sala: SalaActiva) -> void:
 	sala.estado = sala.motor.iniciar(sala.capacidad)
 	sala.fecha_inicio = reloj_fecha.call()
@@ -289,6 +392,16 @@ func _empezar(sala: SalaActiva) -> void:
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_inicio(sala, posicion)
 		_enviar_estado(sala, posicion)
+	_marcar_en_curso(sala.sala_id)
+
+
+## La sala pasa a en_curso en el backend: desde ahí ya no se puede expulsar,
+## unirse ni abandonar. Si falla solo se registra; la partida sigue.
+func _marcar_en_curso(sala_id: String) -> void:
+	var respuesta: Dictionary = await _backend.iniciar_sala(sala_id)
+	if not respuesta.get("ok", false):
+		push_error("No se pudo marcar la sala %s como en curso en el backend (código %s)"
+			% [sala_id, respuesta.get("codigo")])
 
 
 func _jugar(peer_id: int, tipo: String, payload: Dictionary) -> void:

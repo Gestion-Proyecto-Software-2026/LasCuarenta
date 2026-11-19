@@ -6,6 +6,7 @@ extends Node
 signal conectado
 signal fallo_conexion
 signal desconectado_del_servidor
+signal sala_actualizada(sala: Dictionary)
 signal partida_iniciada(config: Dictionary)
 signal estado_actualizado(estado: Dictionary)
 signal partida_terminada(resultado: Dictionary)
@@ -19,6 +20,7 @@ signal denuncia_actualizada(denuncia: Dictionary)
 var sala_id := ""
 var servidor_direccion := "localhost:9000"
 var config: Dictionary = {}
+var sala: Dictionary = {}
 var ultimo_estado: Dictionary = {}
 var resultado: Dictionary = {}
 var chat: Array = []
@@ -39,6 +41,14 @@ func conectar_al_servidor() -> void:
 
 func unirse_partida(usuario_id: String, token: String) -> void:
 	llamadas.append(["unirse_partida", usuario_id, token])
+
+
+func empezar_partida() -> void:
+	llamadas.append(["empezar_partida"])
+
+
+func actualizar_sala() -> void:
+	llamadas.append(["actualizar_sala"])
 
 
 func enviar(tipo: String, payload: Dictionary = {}) -> void:

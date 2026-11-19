@@ -104,7 +104,7 @@ Todas las rutas de lobby exigen `Authorization: Bearer <token>`.
 | POST | `/salas` | `{ juego, capacidad?, nombre?, password_hash? }` | `201 { id, juego, estado, capacidad, nombre, tiene_contrasena, servidor_direccion }` — `guinote` o `mus` |
 | POST | `/salas/:id/unirse` | `{ password_hash? }` (solo si la sala tiene contraseña) | `200 { id, juego, estado, capacidad, creador_id, jugadores_actuales, servidor_direccion }` |
 | DELETE | `/salas/:id/unirse` | — | `204` — abandona una sala en espera (PBI-03) |
-| POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200` — solo el creador puede invocarlo (PBI-09, pendiente) |
+| POST | `/salas/:id/expulsar` | `{ usuario_id }` | `200 { id, capacidad, jugadores_actuales }` — solo el creador, y solo con la sala `esperando` (PBI-09) |
 
 Errores de lobby: `400` (`juego` no admitido, capacidad no admitida para ese juego, nombre fuera de 1-40 caracteres, `password_hash` que no es un SHA-256 hexadecimal, o `:id` que no es UUID), `401` (sin token o token inválido), `403` (`password_hash` no coincide con el de la sala, o no se manda habiéndola), `404` (la sala no existe, o en `DELETE .../unirse` cuando el usuario no es participante de ella), `409` (la sala no está `esperando`, el usuario ya está sentado en ella, o no quedan plazas). Cuerpo de error siempre `{ error: "mensaje" }`.
 
@@ -114,7 +114,9 @@ Al crear una sala, el creador queda sentado en la posición 0. Al unirse, el bac
 
 `jugadores` (solo en `GET /salas`, para que el lobby muestre quién hay en cada sala antes de unirse) es un array `[{ usuario_id, nombre_visible, posicion }]`, uno por participante actual, ordenado por posición.
 
-`DELETE /salas/:id/unirse` saca al usuario autenticado de `sala_participantes`. Solo se puede abandonar una sala `esperando` (`409` si no lo está); `404` si el usuario no es participante. Si al salir no queda nadie en la sala, esta se borra entera, para que abandonar la sala de espera (p. ej. tras un error de conexión al servidor de partida, §6) no deje salas fantasma en el lobby.
+**Expulsar (PBI-09):** `POST /salas/:id/expulsar` saca a `usuario_id` de `sala_participantes`, así que su plaza queda libre para que se una otro (el expulsado también puede volver a unirse; no hay lista de vetados). Errores: `400` (`:id` o `usuario_id` no son UUID, o el creador intenta expulsarse a sí mismo), `403` (quien llama no es el creador), `404` (la sala no existe o ese jugador no está en ella), `409` (la partida ya ha empezado: la sala está `en_curso`). El backend no avisa al servidor de partida (nunca le llama, §5 Interno): el cliente del creador, tras el `200`, le envía `actualizar_sala` por ENet (§6) y el servidor relee la sala y desconecta al expulsado.
+
+`DELETE /salas/:id/unirse` saca al usuario autenticado de `sala_participantes`. Solo se puede abandonar una sala `esperando` (`409` si no lo está); `404` si el usuario no es participante. Si al salir no queda nadie en la sala, esta se borra entera, para que abandonar la sala de espera (p. ej. tras un error de conexión al servidor de partida, §6) no deje salas fantasma en el lobby. Si el que sale es el creador y queda alguien, `creador_id` pasa al jugador sentado en la posición más baja, para que siempre haya alguien que pueda expulsar y empezar la partida (PBI-09).
 
 `servidor_direccion` es la IP/host y puerto (`host:puerto`) a la que el cliente debe conectarse por ENet una vez la sala está completa. Se devuelve tanto al crear la sala como al unirse a ella, para que cualquiera de los dos pueda conectar. La decide el backend a partir de la variable de entorno `GAME_SERVER_ADDRESS` (p. ej. `juego.tudominio.com:9000`): de momento hay un único proceso de servidor de partida que aloja todas las salas, suficiente para el mínimo de 5 partidas simultáneas (§2). Si más adelante hay varias instancias, este es el único punto que cambia.
 
@@ -184,6 +186,7 @@ En el historial, `juego` (opcional: `guinote`, `mus` o `tute`) filtra por juego 
 | Método | Ruta | Cabecera | Body |
 |---|---|---|---|
 | GET | `/interno/salas/:id` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
+| POST | `/interno/salas/:id/iniciar` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | — |
 | POST | `/interno/partidas` | `X-Internal-Secret: <INTERNAL_API_SECRET>` | `{ sala_id, jugadores: [{ usuario_id, posicion, equipo }], resultado: { equipo_ganador, puntos_por_equipo, causa, ... }, fecha_inicio, fecha_fin }` |
 
 En `POST /interno/partidas`, `resultado` es lo que devuelve `calcular_resultado` del motor (§7) más `causa`, y `equipo` es `posicion % 2`. En una transacción que bloquea la sala (`SELECT ... FOR UPDATE`), el backend rellena `partidas` (`fecha_inicio`, `fecha_fin`, `causa` y el `resultado` entero en `resultado_json`) y `partida_jugadores` (`posicion`, `equipo`, `gano` = el equipo del jugador es `equipo_ganador`, `puntos_obtenidos` = `resultado.puntos_por_equipo[equipo]`), y pasa la sala a `finalizada`. Responde `201 { id }` (id de la partida creada), `400` si el body está mal formado o algún jugador no tiene cuenta, `404` si la sala no existe o `409 { error: "la partida de esta sala ya está registrada" }`.
@@ -202,7 +205,9 @@ Además, si algún `usuario_id` tiene forma de UUID pero no corresponde a ningun
 
 **Registro desde el servidor de partida.** Al terminar una partida, `RoomManager` añade `causa` al resultado del motor antes de mandar `partida_terminada`, así el cliente y el backend ven lo mismo. Tras avisar a los jugadores, registra `{ sala_id, jugadores, resultado, fecha_inicio, fecha_fin }`, con las fechas en ISO 8601 UTC: `fecha_inicio` es cuando empezó la partida (al conectarse todos) y `fecha_fin`, cuando terminó. Si el backend no contesta (código 0) o devuelve un 5xx, lo reintenta, hasta 3 intentos (`INTENTOS_REGISTRO`) con 2 s entre uno y otro. Un `409` quiere decir que ya estaba registrada y se da por bueno. Cualquier otro 4xx es un body que el backend no acepta: se escribe en el log (`push_error`) y no se reintenta, porque volvería a fallar igual. Si se agotan los intentos, también queda en el log con el código, y esa partida no llega al historial.
 
-`GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, participantes: [{ usuario_id, posicion, equipo, nombre_visible }] }` o `404` si la sala no existe (`nombre_visible` es para que la mesa rotule a cada jugador). La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
+`GET /interno/salas/:id` es como el servidor de partida se entera de una sala: lo llama la primera vez que un jugador envía `unirse_partida` para esa sala (§6). Responde `200 { id, juego, estado, capacidad, creador_id, participantes: [{ usuario_id, posicion, equipo, nombre_visible }] }` o `404` si la sala no existe (`nombre_visible` es para que la mesa rotule a cada jugador). El servidor de partida la vuelve a pedir cada vez que la sala de espera puede haber cambiado (alguien nuevo, alguien que se va, `actualizar_sala`, `empezar_partida`).
+
+`POST /interno/salas/:id/iniciar` lo llama el servidor de partida cuando el creador empieza la partida (PBI-09): la sala pasa de `esperando` a `en_curso`, y desde entonces ya no se puede expulsar, unirse ni abandonar. Responde `204` (también si ya estaba `en_curso`), `404` si la sala no existe o `409` si ya está `finalizada`. Si falla, el servidor de partida lo registra en su log y la partida sigue. La comunicación siempre va del servidor de partida al backend; el backend nunca llama al servidor de partida.
 
 El backend rechaza con `401` cualquier petición a `/interno/*` cuya cabecera `X-Internal-Secret` no coincida con la variable de entorno `INTERNAL_API_SECRET` (definida en `backend/.env.example` y en `docker-compose.yml`). El servidor de partida debe leer el mismo valor de su propia configuración — no es JWT de usuario, es un secreto fijo compartido entre los dos procesos.
 
@@ -231,6 +236,8 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `ordago` | — | Mus: envidar el juego entero, o subir a órdago un envite rival |
 | `quiero` / `no_quiero` | — | Mus: contestar a un envite u órdago rival |
 | `chat_enviar` | `{ mensaje }` | PBI-08: estando en una sala, antes, durante y después de la partida (ver "Chat de la partida") |
+| `empezar_partida` | — | PBI-09: solo el creador, en la sala de espera, con todos los asientos ocupados y conectados |
+| `actualizar_sala` | — | PBI-09: en la sala de espera, para que el servidor relea la sala del backend (el creador lo envía tras expulsar a alguien por REST) |
 | `denunciar_chat` | `{ mensaje_id }` | PBI-08: un rival de quien escribió el mensaje, con la partida en juego (ver "Denuncias del chat") |
 | `admitir_denuncia` / `no_admitir_denuncia` | — | PBI-08: cualquiera de la parte denunciada, con una denuncia pendiente |
 
@@ -238,7 +245,8 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 
 | Mensaje | Payload | Cuándo |
 |---|---|---|
-| `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Al conectarse todos los jugadores de la sala, o al reconectarse uno |
+| `sala_actualizada` | `{ creador_id, capacidad, jugadores: [{ usuario_id, nombre, posicion, conectado }] }` | PBI-09: antes de empezar, a todos los que esperan, cada vez que cambia la sala (alguien se sienta, se va o es expulsado) |
+| `partida_iniciada` | `{ config: { sala_id, juego, tu_posicion, jugadores: [{ usuario_id, posicion, equipo, nombre }] } }` | Cuando el creador envía `empezar_partida`, o al reconectarse uno a una partida ya empezada |
 | `estado_partida` | snapshot filtrado (`vista_para_jugador`, §7) + `jugadas_validas` de ese jugador + `ultima_jugada` + `tiempos_para_decidir` | Tras cada acción válida |
 | `partida_terminada` | `{ resultado }` — lo que da `calcular_resultado` (§7) más `causa` (`completa` o `renuncio`, §5 Interno) | Al finalizar |
 | `chat_mensaje` | `{ id, usuario_id, posicion, equipo, nombre, mensaje, durante_partida }` | PBI-08: a todos los de la sala (también a quien lo escribió) al recibir un `chat_enviar` válido |
@@ -246,7 +254,9 @@ Mensajes sobre ENet (UDP) con formato `{ tipo, payload }` (`payload` siempre es 
 | `denuncia_chat` | `{ estado, mensaje_id, mensaje, denunciante, denunciado, equipo_denunciado, segundos, respondido_por }` | PBI-08: a todos los de la sala, cuando una denuncia empieza (`pendiente`) y cuando se resuelve (`admitida`, `no_admitida` o `caducada`) |
 | `error` | `{ mensaje }` | Jugada inválida, turno equivocado, etc. El mensaje explica el motivo cuando el motor lo sabe ("Tienes que asistir: echa una carta de oros.") |
 
-**Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Cuando todos los participantes se han unido, envía `partida_iniciada` a todos.
+**Validación de `unirse_partida`:** el servidor de partida verifica el JWT él mismo, con el mismo `JWT_SECRET` que el backend (sin preguntar al backend en cada conexión). El token lo firma el backend en el login con el `id` del usuario en su payload; si ese `id` no coincide con `usuario_id`, o el token es inválido o ha caducado, responde `error` y cierra la conexión. Después consulta la sala con `GET /interno/salas/:id` (§5) —solo la primera vez; luego la mantiene en memoria— y comprueba que el usuario es participante y que la sala no está `finalizada`. Si el usuario no figura, relee la sala antes de rechazarlo (pudo unirse por REST después).
+
+**Sala de espera y moderación (PBI-09):** la partida ya no empieza sola. Mientras no ha empezado, el servidor manda `sala_actualizada` a todos los conectados cada vez que la sala cambia, y cada vez que la relee del backend sustituye su lista de participantes por la del backend: quien estuviera conectado y ya no figure en su asiento (expulsado) recibe `error { mensaje: "El creador de la sala te ha expulsado" }` y se le cierra la conexión. Al desconectarse alguien en espera también se relee (puede haber abandonado la sala). El creador (`creador_id` de `GET /interno/salas/:id`) envía `empezar_partida`; el servidor relee la sala, comprueba que están todos sentados y conectados, envía `partida_iniciada` a todos y llama a `POST /interno/salas/:id/iniciar`. Si no es el creador, falta alguien o ya había empezado, responde `error` sin cerrar la conexión.
 
 **Jugadas válidas:** cada `estado_partida` incluye `jugadas_validas`, la lista de lo que ese jugador puede enviar en ese momento, con el mismo formato con que se envía (`{ tipo, ...payload }`). El cliente la usa para saber qué cartas o botones activar, sin conocer las reglas. Puede quedarse desfasada si otro jugador actúa a la vez; en ese caso el servidor responde `error` y el siguiente `estado_partida` trae la lista buena.
 

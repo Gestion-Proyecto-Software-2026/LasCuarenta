@@ -1,6 +1,7 @@
 jest.mock("../src/services/internoService", () => ({
   obtenerSala: jest.fn(),
   registrarPartida: jest.fn(),
+  iniciarSala: jest.fn(),
 }));
 
 const request = require("supertest");
@@ -191,5 +192,39 @@ describe("POST /api/interno/partidas", () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: "error interno" });
     consola.mockRestore();
+  });
+});
+
+describe("POST /api/interno/salas/:id/iniciar", () => {
+  it("401 sin el secreto interno", async () => {
+    const res = await request(app).post(
+      `/api/interno/salas/${SALA_ID}/iniciar`,
+    );
+
+    expect(res.status).toBe(401);
+    expect(internoService.iniciarSala).not.toHaveBeenCalled();
+  });
+
+  it("204 cuando el secreto coincide", async () => {
+    internoService.iniciarSala.mockResolvedValue();
+
+    const res = await request(app)
+      .post(`/api/interno/salas/${SALA_ID}/iniciar`)
+      .set("X-Internal-Secret", SECRETO);
+
+    expect(res.status).toBe(204);
+    expect(internoService.iniciarSala).toHaveBeenCalledWith(SALA_ID);
+  });
+
+  it("404 si la sala no existe", async () => {
+    internoService.iniciarSala.mockRejectedValue(
+      new ErrorHttp(404, "la sala no existe"),
+    );
+
+    const res = await request(app)
+      .post(`/api/interno/salas/${SALA_ID}/iniciar`)
+      .set("X-Internal-Secret", SECRETO);
+
+    expect(res.status).toBe(404);
   });
 });

@@ -659,3 +659,40 @@ describe("internoService.registrarPartida", () => {
     });
   });
 });
+
+describe("internoService.iniciarSala", () => {
+  it("pasa a en_curso una sala en espera", async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ estado: "esperando" }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await internoService.iniciarSala(SALA_ID);
+
+    const [sql, params] = pool.query.mock.calls[1];
+    expect(sql).toContain("estado = 'en_curso'");
+    expect(params).toEqual([SALA_ID]);
+  });
+
+  it("404 si la sala no existe", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    await expect(internoService.iniciarSala(SALA_ID)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it("409 si la sala ya ha terminado", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ estado: "finalizada" }] });
+
+    await expect(internoService.iniciarSala(SALA_ID)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it("400 si el id no es UUID", async () => {
+    await expect(internoService.iniciarSala("x")).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+});

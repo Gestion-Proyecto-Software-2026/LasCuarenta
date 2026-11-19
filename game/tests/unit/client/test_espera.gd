@@ -95,3 +95,110 @@ func test_salir_abandona_la_sala_por_HTTP_y_desconecta_de_ENet() -> void:
 # El botón "Salir de la sala" también cambia de escena (get_tree().change_scene_to_file);
 # esa navegación no se prueba aquí por el mismo motivo que en lobby.gd (ver
 # docs/mapa/tests-ci.md): se comprueba a mano.
+
+
+# --- Sala de espera y moderación (PBI-09) ---
+
+const SALA_COMPLETA := {
+	"creador_id": "u1", "capacidad": 2,
+	"jugadores": [
+		{"usuario_id": "u1", "nombre": "Ana", "posicion": 0, "conectado": true},
+		{"usuario_id": "u2", "nombre": "Luis", "posicion": 1, "conectado": true},
+	],
+}
+
+
+func _lista() -> VBoxContainer:
+	return espera.find_child("ListaJugadores", true, false)
+
+
+func _sala(cambios: Dictionary = {}) -> Dictionary:
+	var sala := SALA_COMPLETA.duplicate(true)
+	sala.merge(cambios, true)
+	red.sala = sala
+	red.sala_actualizada.emit(sala)
+	return sala
+
+
+func test_pinta_un_jugador_por_asiento_ocupado() -> void:
+	_sala()
+
+	assert_eq(_lista().get_child_count(), 2)
+	assert_eq(_lista().get_child(0).get_node("Nombre").text, "Ana (creador) (tú)")
+	assert_eq(_lista().get_child(1).get_node("Nombre").text, "Luis")
+
+
+func test_el_creador_ve_expulsar_en_los_demas_y_empezar_activo_con_la_sala_completa() -> void:
+	_sala()
+
+	assert_null(_lista().get_child(0).get_node_or_null("BotonExpulsar"), "no puede expulsarse a sí mismo")
+	assert_not_null(_lista().get_child(1).get_node_or_null("BotonExpulsar"))
+	assert_true(_boton("BotonEmpezar").visible)
+	assert_false(_boton("BotonEmpezar").disabled)
+
+
+func test_con_la_sala_incompleta_empezar_esta_desactivado() -> void:
+	_sala({"jugadores": [SALA_COMPLETA["jugadores"][0]]})
+
+	assert_true(_boton("BotonEmpezar").disabled)
+	assert_eq(_etiqueta("EtiquetaEstado").text, "Esperando jugadores (1/2)...")
+
+
+func test_quien_no_es_creador_no_ve_expulsar_ni_empezar() -> void:
+	api.usuario = {"id": "u2", "nombre_visible": "Luis"}
+	_sala()
+
+	for fila in _lista().get_children():
+		assert_null(fila.get_node_or_null("BotonExpulsar"))
+	assert_false(_boton("BotonEmpezar").visible)
+	assert_eq(_etiqueta("EtiquetaEstado").text, "Sala completa. Esperando a que el creador empiece la partida...")
+
+
+func test_empezar_lo_pide_al_servidor() -> void:
+	_sala()
+
+	_boton("BotonEmpezar").pressed.emit()
+
+	assert_true(red.llamadas.has(["empezar_partida"]))
+
+
+func test_expulsar_llama_al_backend_y_pide_releer_la_sala() -> void:
+	_sala()
+
+	_lista().get_child(1).get_node("BotonExpulsar").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_true(api.llamadas.has(["expulsar_jugador", "sala-1", "u2"]))
+	assert_true(red.llamadas.has(["actualizar_sala"]))
+
+
+func test_si_el_backend_rechaza_la_expulsion_se_muestra_el_error() -> void:
+	api.respuesta_expulsar = {"ok": false, "codigo": 409, "datos": {"error": "la partida ya ha empezado"}}
+	_sala()
+
+	_lista().get_child(1).get_node("BotonExpulsar").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_eq(_etiqueta("EtiquetaError").text, "la partida ya ha empezado")
+	assert_false(red.llamadas.has(["actualizar_sala"]))
+	assert_false(red.llamadas.has(["desconectar"]))
+
+
+func test_un_error_recuperable_en_la_sala_no_desconecta() -> void:
+	_sala()
+
+	red.error_recibido.emit("Faltan jugadores: la sala tiene que estar completa para empezar")
+
+	assert_true(_etiqueta("EtiquetaError").visible)
+	assert_false(red.llamadas.has(["desconectar"]))
+
+
+func test_al_ser_expulsado_se_muestra_el_motivo_y_se_desconecta() -> void:
+	api.usuario = {"id": "u2", "nombre_visible": "Luis"}
+	_sala()
+
+	red.error_recibido.emit("El creador de la sala te ha expulsado")
+
+	assert_eq(_etiqueta("EtiquetaError").text, "El creador de la sala te ha expulsado")
+	assert_true(red.llamadas.has(["desconectar"]))
+	assert_false(_boton("BotonEmpezar").visible)

@@ -35,7 +35,7 @@ func _sala(sala: String, capacidad: int) -> Dictionary:
 		participantes.append({"usuario_id": _usuario(posicion, sala), "posicion": posicion,
 			"equipo": posicion % 2, "nombre_visible": NOMBRES[posicion]})
 	return {"id": sala, "juego": "guinote", "estado": "esperando", "capacidad": capacidad,
-		"participantes": participantes}
+		"creador_id": _usuario(0, sala), "participantes": participantes}
 
 
 func _conectar(sala: String, posicion: int, peer: int) -> Node:
@@ -65,6 +65,8 @@ func before_each() -> void:
 	for posicion in 2:
 		var usuario := _usuario(posicion, OTRA_SALA)
 		otras[posicion].unirse_partida(usuario, JwtDePrueba.firmar({"id": usuario}, SECRETO))
+	# PBI-09: la partida no empieza sola, la arranca el creador (asiento 0).
+	redes[0].empezar_partida()
 	# Como en el cliente: la mesa se abre cuando llega partida_iniciada.
 	for posicion in 4:
 		var mesa: Control = PARTIDA_MESA.instantiate()

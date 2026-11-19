@@ -505,3 +505,132 @@ describe("lobbyService.salirSala", () => {
     expect(sqlsEjecutados()).toContain("ROLLBACK");
   });
 });
+
+describe("lobbyService.salirSala cuando sale el creador", () => {
+  it("pasa la sala al siguiente jugador sentado", async () => {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id"))
+          return {
+            rows: [
+              { id: SALA_ID, estado: "esperando", creador_id: USUARIO_ID },
+            ],
+          };
+        if (sql.includes("DELETE FROM sala_participantes"))
+          return { rows: [], rowCount: 1 };
+        if (sql.includes("COUNT(*)::int AS total"))
+          return { rows: [{ total: 1 }] };
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+
+    await lobbyService.salirSala(SALA_ID, USUARIO_ID);
+
+    expect(
+      sqlsEjecutados().some((sql) =>
+        sql.includes("UPDATE salas SET creador_id"),
+      ),
+    ).toBe(true);
+    expect(sqlsEjecutados()).toContain("COMMIT");
+  });
+});
+
+describe("lobbyService.expulsarJugador", () => {
+  const salaEsperando = {
+    id: SALA_ID,
+    estado: "esperando",
+    capacidad: 2,
+    creador_id: USUARIO_ID,
+  };
+
+  function prepararExpulsion({ sala = salaEsperando, borrados = 1 } = {}) {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id"))
+          return { rows: sala ? [sala] : [] };
+        if (sql.includes("DELETE FROM sala_participantes"))
+          return { rows: [], rowCount: borrados };
+        if (sql.includes("COUNT(*)::int AS total"))
+          return { rows: [{ total: 1 }] };
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+  }
+
+  it("saca al jugador y deja su plaza libre", async () => {
+    prepararExpulsion();
+
+    const resultado = await lobbyService.expulsarJugador(
+      SALA_ID,
+      USUARIO_ID,
+      OTRO_ID,
+    );
+
+    expect(resultado).toEqual({
+      id: SALA_ID,
+      capacidad: 2,
+      jugadores_actuales: 1,
+    });
+    const borrado = cliente.query.mock.calls.find(([sql]) =>
+      sql.includes("DELETE FROM sala_participantes"),
+    );
+    expect(borrado[1]).toEqual([SALA_ID, OTRO_ID]);
+    expect(sqlsEjecutados()).toContain("COMMIT");
+  });
+
+  it("403 si quien expulsa no es el creador", async () => {
+    prepararExpulsion({ sala: { ...salaEsperando, creador_id: OTRO_ID } });
+
+    await expect(
+      lobbyService.expulsarJugador(SALA_ID, USUARIO_ID, OTRO_ID),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(sqlsEjecutados()).toContain("ROLLBACK");
+  });
+
+  it("409 si la partida ya ha empezado", async () => {
+    prepararExpulsion({ sala: { ...salaEsperando, estado: "en_curso" } });
+
+    await expect(
+      lobbyService.expulsarJugador(SALA_ID, USUARIO_ID, OTRO_ID),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("404 si la sala no existe", async () => {
+    prepararExpulsion({ sala: null });
+
+    await expect(
+      lobbyService.expulsarJugador(SALA_ID, USUARIO_ID, OTRO_ID),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("404 si el jugador no está en la sala", async () => {
+    prepararExpulsion({ borrados: 0 });
+
+    await expect(
+      lobbyService.expulsarJugador(SALA_ID, USUARIO_ID, OTRO_ID),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(sqlsEjecutados()).toContain("ROLLBACK");
+  });
+
+  it("400 si el creador intenta expulsarse a sí mismo", async () => {
+    await expect(
+      lobbyService.expulsarJugador(SALA_ID, USUARIO_ID, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no-es-uuid", OTRO_ID],
+    [SALA_ID, undefined],
+    [SALA_ID, "no-es-uuid"],
+  ])("400 con sala %s y usuario %s", async (sala, usuario) => {
+    await expect(
+      lobbyService.expulsarJugador(sala, USUARIO_ID, usuario),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+});

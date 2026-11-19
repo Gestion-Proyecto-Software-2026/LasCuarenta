@@ -52,7 +52,7 @@ func _preparar(capacidad := 4, motor: GDScript = MotorLargo, segundos := RoomMan
 		participantes.append({"usuario_id": USUARIOS[posicion], "posicion": posicion,
 			"equipo": posicion % 2, "nombre_visible": NOMBRES[posicion]})
 	backend.salas[SALA] = {"id": SALA, "juego": "falso", "estado": "esperando",
-		"capacidad": capacidad, "participantes": participantes}
+		"capacidad": capacidad, "creador_id": USUARIOS[0], "participantes": participantes}
 	backend.salas[OTRA_SALA] = {"id": OTRA_SALA, "juego": "falso", "estado": "esperando", "capacidad": 2,
 		"participantes": [
 			{"usuario_id": OTROS[0], "posicion": 0, "equipo": 0, "nombre_visible": "Eva"},
@@ -79,10 +79,12 @@ func _unirse(peer: int, usuario: String, sala := SALA) -> void:
 		{"usuario_id": usuario, "token": JwtDePrueba.firmar({"id": usuario}, SECRETO), "sala_id": sala}))
 
 
-## Sienta a todos en SALA: el peer de cada asiento es 10 + asiento.
+## Sienta a todos en SALA (el peer de cada asiento es 10 + asiento) y el creador,
+## que ocupa el asiento 0, empieza la partida (PBI-09: ya no empieza sola).
 func _empezar(capacidad := 4) -> void:
 	for posicion in capacidad:
 		_unirse(10 + posicion, USUARIOS[posicion])
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 
 
 func _de(peer: int, tipo: String) -> Array[Dictionary]:
@@ -421,6 +423,7 @@ func test_reglas_de_quien_puede_denunciar() -> void:
 	_chatear(11, "antes de empezar")  # id 1
 	_unirse(12, USUARIOS[2])
 	_unirse(13, USUARIOS[3])
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))  # PBI-09: la arranca el creador
 	_chatear(11, "durante")  # id 2
 	_denunciar(13, 2)
 	assert_eq(_ultimo_error(13), ChatSala.ERROR_NO_ES_RIVAL, "su compañero")

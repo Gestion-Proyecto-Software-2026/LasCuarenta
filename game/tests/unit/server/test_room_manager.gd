@@ -20,7 +20,7 @@ func before_each() -> void:
 	backend = BackendFalso.new()
 	add_child_autofree(backend)
 	backend.salas[SALA] = {
-		"id": SALA, "juego": "falso", "estado": "esperando", "capacidad": 2,
+		"id": SALA, "juego": "falso", "estado": "esperando", "capacidad": 2, "creador_id": U0,
 		"participantes": [
 			{"usuario_id": U0, "posicion": 0, "equipo": 0},
 			{"usuario_id": U1, "posicion": 1, "equipo": 1},
@@ -43,6 +43,18 @@ func _unirse(peer: int, usuario: String, sala := SALA, token := "") -> void:
 		token = JwtDePrueba.firmar({"id": usuario}, SECRETO)
 	rm.recibir(peer, MensajesRed.crear(MensajesRed.UNIRSE_PARTIDA,
 		{"usuario_id": usuario, "token": token, "sala_id": sala}))
+
+
+## El creador (U0, peer 10 por defecto) pulsa EMPEZAR.
+func _empezar(peer := 10) -> void:
+	rm.recibir(peer, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
+
+
+## Sienta a los dos jugadores y el creador empieza la partida.
+func _sentar_y_empezar() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	_empezar()
 
 
 func _de(peer: int, tipo: String) -> Array[Dictionary]:
@@ -115,6 +127,7 @@ func test_participante_tardio_se_admite_tras_refrescar_la_sala() -> void:
 	backend.salas[SALA]["participantes"].append({"usuario_id": U1, "posicion": 1, "equipo": 1})
 	_unirse(11, U1)
 	assert_eq(expulsados, [], "un participante real no se rechaza por una caché desactualizada")
+	_empezar()
 	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 1)
 	assert_eq(_de(11, MensajesRed.PARTIDA_INICIADA).size(), 1)
 
@@ -127,11 +140,13 @@ func test_capacidad_no_admitida_por_el_juego() -> void:
 
 # --- unirse_partida: flujo normal ---
 
-func test_la_partida_empieza_cuando_estan_todos() -> void:
+func test_la_partida_empieza_cuando_el_creador_lo_pide() -> void:
 	_unirse(10, U0)
-	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 0, "falta un jugador")
 	_unirse(11, U1)
 	assert_eq(expulsados, [])
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 0, "ya no empieza sola")
+	_empezar()
+	assert_eq(backend.salas_iniciadas, [SALA], "el backend pasa la sala a en_curso")
 	for peer_y_posicion in [[10, 0], [11, 1]]:
 		var inicio := _de(peer_y_posicion[0], MensajesRed.PARTIDA_INICIADA)
 		assert_eq(inicio.size(), 1)
@@ -143,8 +158,7 @@ func test_la_partida_empieza_cuando_estan_todos() -> void:
 
 
 func test_el_estado_incluye_las_jugadas_validas_de_cada_jugador() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	var estado_0: Dictionary = _de(10, MensajesRed.ESTADO_PARTIDA)[0]["payload"]
 	var estado_1: Dictionary = _de(11, MensajesRed.ESTADO_PARTIDA)[0]["payload"]
 	assert_eq(estado_0["jugadas_validas"].size(), 2, "le toca: puede jugar sus 2 cartas")
@@ -153,8 +167,7 @@ func test_el_estado_incluye_las_jugadas_validas_de_cada_jugador() -> void:
 
 
 func test_cada_jugador_recibe_solo_su_mano() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	var mano_0: Array = _de(10, MensajesRed.ESTADO_PARTIDA)[0]["payload"]["mi_mano"]
 	var mano_1: Array = _de(11, MensajesRed.ESTADO_PARTIDA)[0]["payload"]["mi_mano"]
 	assert_eq(mano_0.size(), 2)
@@ -168,6 +181,8 @@ func test_uniones_simultaneas_consultan_la_sala_una_sola_vez() -> void:
 	_unirse(11, U1)
 	await wait_process_frames(3)
 	assert_eq(backend.consultas_de_sala, 1)
+	_empezar()
+	await wait_process_frames(3)
 	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 1)
 	assert_eq(_de(11, MensajesRed.PARTIDA_INICIADA).size(), 1)
 
@@ -201,8 +216,7 @@ func test_jugada_antes_de_unirse_o_de_empezar() -> void:
 
 
 func test_jugada_valida_actualiza_a_todos_e_invalida_solo_avisa_al_que_juega() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	_jugar_primera_carta(11)  # no es su turno
 	assert_eq(_ultimo_error(11), MotorDeJuego.ERROR_SIN_JUGADAS)
 	assert_eq(_de(10, MensajesRed.ESTADO_PARTIDA).size(), 1, "una jugada inválida no se difunde")
@@ -214,8 +228,7 @@ func test_jugada_valida_actualiza_a_todos_e_invalida_solo_avisa_al_que_juega() -
 
 
 func test_el_tipo_del_payload_no_sustituye_al_del_mensaje() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	var carta: String = _de(10, MensajesRed.ESTADO_PARTIDA)[0]["payload"]["mi_mano"][0]
 	rm.recibir(10, MensajesRed.crear("apostar", {"tipo": "jugar_carta", "carta_id": carta}))
 	assert_eq(_ultimo_error(10), MotorDeJuego.ERROR_JUGADA_NO_VALIDA)
@@ -233,8 +246,7 @@ func test_mensajes_mal_formados_y_chat() -> void:
 
 
 func test_partida_completa_notifica_y_registra_en_el_backend() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	for turno in 4:  # 2 jugadores x 2 cartas
 		_jugar_primera_carta(10 if turno % 2 == 0 else 11)
 	await wait_process_frames(1)
@@ -253,8 +265,7 @@ func test_partida_completa_notifica_y_registra_en_el_backend() -> void:
 # --- Reconexión ---
 
 func test_reconexion_recupera_el_asiento_y_el_estado() -> void:
-	_unirse(10, U0)
-	_unirse(11, U1)
+	_sentar_y_empezar()
 	_jugar_primera_carta(10)
 	rm.desconectar(11)
 	_unirse(21, U1)
@@ -270,3 +281,113 @@ func test_una_segunda_sesion_del_mismo_usuario_expulsa_a_la_anterior() -> void:
 	assert_eq(expulsados, [10])
 	assert_eq(_ultimo_error(10), "Te has conectado a esta partida desde otra sesión")
 	assert_eq(rm.salas_activas[SALA].peer_en_posicion[0], 20)
+
+
+# --- Sala de espera y moderación (PBI-09) ---
+
+func _ultima_sala(peer: int) -> Dictionary:
+	var vistas := _de(peer, MensajesRed.SALA_ACTUALIZADA)
+	return vistas.back()["payload"] if not vistas.is_empty() else {}
+
+
+func test_al_sentarse_todos_reciben_la_lista_de_la_sala() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	var vista := _ultima_sala(10)
+	assert_eq(vista["creador_id"], U0)
+	assert_eq(vista["capacidad"], 2)
+	assert_eq(vista["jugadores"].map(func(j: Dictionary) -> String: return j["usuario_id"]), [U0, U1])
+	assert_true(vista["jugadores"].all(func(j: Dictionary) -> bool: return j["conectado"]))
+	assert_eq(_ultima_sala(11), vista, "el otro jugador ve lo mismo")
+
+
+func test_solo_el_creador_puede_empezar() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	_empezar(11)
+	assert_eq(_ultimo_error(11), "Solo el creador de la sala puede empezar la partida")
+	assert_eq(_de(11, MensajesRed.PARTIDA_INICIADA).size(), 0)
+	assert_eq(backend.salas_iniciadas, [])
+
+
+func test_no_se_puede_empezar_con_la_sala_incompleta() -> void:
+	_unirse(10, U0)
+	_empezar()
+	assert_eq(_ultimo_error(10), "Faltan jugadores: la sala tiene que estar completa para empezar")
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 0)
+
+
+func test_empezar_dos_veces() -> void:
+	_sentar_y_empezar()
+	_empezar()
+	assert_eq(_ultimo_error(10), "La partida ya ha empezado")
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 1)
+
+
+func test_el_expulsado_pierde_el_asiento_y_se_le_desconecta() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	# El creador expulsa a U1 por REST (aquí, en el doble del backend) y avisa.
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	rm.recibir(10, MensajesRed.crear(MensajesRed.ACTUALIZAR_SALA))
+
+	assert_eq(_ultimo_error(11), RoomManager.MENSAJE_EXPULSADO)
+	assert_eq(expulsados, [11])
+	assert_eq(_ultima_sala(10)["jugadores"].size(), 1, "el creador ve la plaza libre")
+	_empezar()
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 0, "sin él la sala no está completa")
+
+
+func test_la_plaza_del_expulsado_la_ocupa_otro() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	rm.recibir(10, MensajesRed.crear(MensajesRed.ACTUALIZAR_SALA))
+	# Otro usuario se une por REST a la plaza 1 y se conecta.
+	backend.salas[SALA]["participantes"].append({"usuario_id": INTRUSO, "posicion": 1, "equipo": 1})
+	_unirse(12, INTRUSO)
+
+	assert_eq(expulsados, [11], "al nuevo no se le rechaza")
+	_empezar()
+	var config: Dictionary = _de(12, MensajesRed.PARTIDA_INICIADA)[0]["payload"]["config"]
+	assert_eq(config["tu_posicion"], 1)
+	assert_eq(config["jugadores"][1]["usuario_id"], INTRUSO)
+
+
+func test_el_expulsado_no_puede_volver_a_entrar_por_enet() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	rm.recibir(10, MensajesRed.crear(MensajesRed.ACTUALIZAR_SALA))
+	_unirse(21, U1)
+	assert_eq(_ultimo_error(21), "No eres participante de esta sala")
+
+
+func test_al_empezar_se_relee_la_sala_por_si_hubo_expulsiones() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	# Expulsado por REST, pero nadie ha pedido actualizar_sala todavía.
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	_empezar()
+	assert_eq(_de(10, MensajesRed.PARTIDA_INICIADA).size(), 0)
+	assert_eq(expulsados, [11])
+
+
+func test_al_desconectarse_alguien_en_espera_se_avisa_al_resto() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	# U1 abandona la sala (REST) y cierra la conexión.
+	backend.salas[SALA]["participantes"] = [{"usuario_id": U0, "posicion": 0, "equipo": 0}]
+	rm.desconectar(11)
+	assert_eq(_ultima_sala(10)["jugadores"].size(), 1)
+	assert_eq(expulsados, [], "no se expulsa a nadie: ya se había ido")
+
+
+func test_actualizar_sala_cambia_el_creador_si_el_backend_lo_traspasa() -> void:
+	_unirse(10, U0)
+	_unirse(11, U1)
+	backend.salas[SALA]["creador_id"] = U1
+	rm.recibir(11, MensajesRed.crear(MensajesRed.ACTUALIZAR_SALA))
+	assert_eq(_ultima_sala(10)["creador_id"], U1)
+	_empezar(11)
+	assert_eq(_de(11, MensajesRed.PARTIDA_INICIADA).size(), 1)

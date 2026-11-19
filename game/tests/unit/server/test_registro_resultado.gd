@@ -31,7 +31,7 @@ func before_each() -> void:
 	backend = BackendFalso.new()
 	add_child_autofree(backend)
 	backend.salas[SALA] = {
-		"id": SALA, "juego": "falso", "estado": "esperando", "capacidad": 2,
+		"id": SALA, "juego": "falso", "estado": "esperando", "capacidad": 2, "creador_id": U0,
 		"participantes": [
 			{"usuario_id": U0, "posicion": 0, "equipo": 0},
 			{"usuario_id": U1, "posicion": 1, "equipo": 1},
@@ -72,6 +72,8 @@ func _de(peer: int, tipo: String) -> Array[Dictionary]:
 func _jugar_partida_entera() -> void:
 	_unirse(10, U0)
 	_unirse(11, U1)
+	# PBI-09: la partida no empieza sola, la arranca el creador.
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 	fecha = FIN
 	for turno in 4:
 		var peer := 10 if turno % 2 == 0 else 11
@@ -83,6 +85,8 @@ func _jugar_partida_entera() -> void:
 func _sala_empezada() -> SalaActiva:
 	_unirse(10, U0)
 	_unirse(11, U1)
+	# PBI-09: la partida no empieza sola, la arranca el creador.
+	rm.recibir(10, MensajesRed.crear(MensajesRed.EMPEZAR_PARTIDA))
 	fecha = FIN
 	return rm.salas_activas[SALA]
 
