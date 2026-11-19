@@ -1,6 +1,0 @@
-; Dirección del servidor al que se conecta el cliente.
-; Copia este fichero como "servidor.cfg" (sin .ejemplo), junto al .exe,
-; y cambia la dirección por la que te hayan dado. Debe empezar por http:// o
-; https:// y acabar en /api.
-[servidor]
-backend_url="http://192.168.1.20:3000/api"
