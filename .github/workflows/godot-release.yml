@@ -38,6 +38,9 @@ jobs:
       - name: Importar el proyecto
         working-directory: game
         run: godot --headless --path . --import
+      # Godot no crea la carpeta de salida: en una máquina limpia no existe.
+      - name: Crear la carpeta de salida
+        run: mkdir -p build
       - name: Export Windows build
         working-directory: game
         run: godot --headless --path . --export-release "Windows Desktop" ../build/cartas-online-windows.exe
