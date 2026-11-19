@@ -133,6 +133,7 @@ paths:
                         usuario_id: { type: string, format: uuid }
                         posicion: { type: integer, minimum: 0, maximum: 3 }
                         equipo: { type: integer, nullable: true }
+                        nombre_visible: { type: string, description: Para que la mesa rotule a cada jugador }
         "401": { description: Falta la cabecera X-Internal-Secret o no coincide }
         "404": { description: La sala no existe }
   /interno/partidas:

@@ -1,0 +1,6 @@
+# Las dependencias se instalan dentro de la imagen (npm ci en el Dockerfile).
+# Sin esto, `COPY . .` pisaría esos node_modules con los del host (p. ej. los de
+# Windows tras un `npm install` local) y bcrypt fallaría con "invalid ELF header".
+node_modules
+.env
+coverage

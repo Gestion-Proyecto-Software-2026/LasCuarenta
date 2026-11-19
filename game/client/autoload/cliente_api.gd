@@ -84,6 +84,29 @@ func restablecer(email: String, codigo: String, password: String) -> Dictionary:
 	})
 
 
+## Partidas terminadas de un jugador, de la más reciente a la más antigua
+## (PBI-06). [param usuario_id] "me" es el usuario de la sesión; [param juego]
+## vacío las trae de todos los juegos.
+func historial(usuario_id: String = "me", juego: String = "") -> Dictionary:
+	var ruta := "/usuarios/%s/historial" % usuario_id.uri_encode()
+	if not juego.is_empty():
+		ruta += "?juego=" + juego.uri_encode()
+	return await _pedir(HTTPClient.METHOD_GET, ruta)
+
+
+func estadisticas(usuario_id: String = "me") -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_GET, "/usuarios/%s/estadisticas" % usuario_id.uri_encode())
+
+
+## Si el historial del usuario de la sesión lo pueden ver los demás.
+func privacidad() -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_GET, "/usuarios/me/privacidad")
+
+
+func cambiar_privacidad(publico: bool) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_PUT, "/usuarios/me/privacidad", {"historial_publico": publico})
+
+
 func listar_salas(juego: String = "guinote") -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_GET, "/salas?juego=" + juego.uri_encode())
 
@@ -109,6 +132,14 @@ func unirse_sala(sala_id: String, password: String = "") -> Dictionary:
 
 func salir_sala(sala_id: String) -> Dictionary:
 	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/unirse" % sala_id.uri_encode())
+
+
+## Clasificación pública (PBI-07). [param juego] vacío agrega todos los juegos.
+func obtener_ranking(juego: String = "guinote") -> Dictionary:
+	var ruta := "/ranking"
+	if not juego.is_empty():
+		ruta += "?juego=" + juego.uri_encode()
+	return await _pedir(HTTPClient.METHOD_GET, ruta)
 
 
 func _hash_password(password: String) -> String:

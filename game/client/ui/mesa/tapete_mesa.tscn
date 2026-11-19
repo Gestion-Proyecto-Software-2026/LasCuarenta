@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://client/ui/mesa/tapete_mesa.gd" id="1_wxlmx"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_42687"]
+size = Vector2(1044, 98)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_vawjc"]
+size = Vector2(296, 133)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_4n7nk"]
+size = Vector2(57, 65)
+
+[node name="TapeteMesa" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_wxlmx")
+
+[node name="mano" type="Control" parent="."]
+layout_mode = 1
+anchor_top = 0.7006173
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -3.0517578e-05
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="area_mano" type="Area2D" parent="mano"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="mano/area_mano"]
+position = Vector2(569, 135)
+shape = SubResource("RectangleShape2D_42687")
+
+[node name="centro_tapete" type="Control" parent="."]
+layout_mode = 1
+anchor_left = 0.24479167
+anchor_top = 0.26234567
+anchor_right = 0.7785556
+anchor_bottom = 0.6399876
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="area_mesa" type="Area2D" parent="centro_tapete"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="centro_tapete/area_mesa"]
+position = Vector2(298.448, 82.5)
+shape = SubResource("RectangleShape2D_vawjc")
+
+[node name="mazo" type="Control" parent="."]
+anchors_preset = 0
+offset_left = 138.0
+offset_top = 189.0
+offset_right = 178.0
+offset_bottom = 229.0
+mouse_filter = 2
+
+[node name="area_mazo" type="Area2D" parent="mazo"]
+position = Vector2(-11, -3)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="mazo/area_mazo"]
+position = Vector2(29, 29)
+shape = SubResource("RectangleShape2D_4n7nk")
+
+[connection signal="area_entered" from="mano/area_mano" to="." method="_on_area_mano_area_entered"]
+[connection signal="area_exited" from="mano/area_mano" to="." method="_on_area_mano_area_exited"]
+[connection signal="area_entered" from="centro_tapete/area_mesa" to="." method="_on_area_mesa_area_entered"]
+[connection signal="area_exited" from="centro_tapete/area_mesa" to="." method="_on_area_mesa_area_exited"]

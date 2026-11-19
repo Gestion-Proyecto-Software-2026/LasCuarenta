@@ -3,12 +3,12 @@ const pool = require("../models/db");
 const { ErrorHttp } = require("../utils/errorHttp");
 
 const JUEGOS = ["guinote", "mus", "tute"];
-const JUEGOS_CREABLES = ["guinote", "mus"];
+const JUEGOS_CREABLES = ["guinote", "mus", "tute"];
 // Capacidades admitidas por juego: duplica a propósito lo que ya expresa
 // jugadores_admitidos() en el motor Godot de cada juego (game/server/game_engine/*/motor_*.gd).
 // Node no puede leer ese .gd, así que no hay una única fuente de verdad posible
 // entre los dos stacks; si se cambia una, hay que recordar cambiar la otra.
-const CAPACIDADES_POR_JUEGO = { guinote: [2, 4], mus: [2, 4] };
+const CAPACIDADES_POR_JUEGO = { guinote: [2, 4], mus: [2, 4], tute: [2, 4] };
 const CAPACIDAD_POR_DEFECTO = 4;
 const NOMBRE_POR_DEFECTO = "Sala de Guiñote";
 const HASH_RE = /^[a-f0-9]{64}$/i;

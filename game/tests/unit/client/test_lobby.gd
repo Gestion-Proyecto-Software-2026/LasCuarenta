@@ -123,3 +123,21 @@ func test_los_botones_se_bloquean_mientras_hay_una_peticion() -> void:
 	assert_true(_boton("BotonCrear").disabled, "el botón crear debe bloquearse durante la petición")
 	await wait_frames(3)
 	assert_false(_boton("BotonCrear").disabled)
+
+
+# --- Historial (PBI-06) ---
+
+func test_el_boton_de_historial_va_entre_crear_sala_y_actualizar() -> void:
+	var historial := _boton("BotonHistorial")
+	assert_not_null(historial)
+	assert_eq(historial.text, "Historial")
+	assert_eq(historial.get_index(), _boton("BotonCrear").get_index() + 1)
+	assert_eq(_boton("BotonActualizar").get_index(), historial.get_index() + 1)
+
+
+## La navegación real no se prueba (ver test_espera.gd): basta con que el botón
+## lleve al manejador que cambia de escena y que esa escena exista.
+func test_el_boton_de_historial_abre_la_pantalla_de_historial() -> void:
+	assert_true(_boton("BotonHistorial").pressed.is_connected(lobby._on_boton_historial_pressed))
+	assert_true(ResourceLoader.exists(lobby.ESCENA_HISTORIAL))
+	assert_true(load(lobby.ESCENA_HISTORIAL) is PackedScene)
