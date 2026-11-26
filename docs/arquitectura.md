@@ -65,6 +65,10 @@ En `game/server/`:
 
 En `game/shared/`, además de `carta.gd` y `baraja.gd`: `canal_red.gd` (autoload `CanalRed`, por el que viajan todos los mensajes: dos RPC, uno por canal de ENet, el de las jugadas y el del chat, que acaban en la misma señal) y `mensajes_red.gd` (nombres de los mensajes del protocolo).
 
+En `game/client/autoload/`, además de `ClienteApi` (REST + JWT), `ClienteRed` (conexión ENet con el servidor de partida) y `FuncionesGlobales`:
+- `ajustes.gd` — autoload `Ajustes`: preferencias del jugador en este ordenador (hoy, `sonido`), guardadas con `ConfigFile` en `user://ajustes.cfg` para que se recuerden al volver a abrir la aplicación. Emite `cambiado(clave, valor)` al cambiar un ajuste. Se cambian desde el panel `ui/ajustes/panel_ajustes.gd`, que se abre en el lobby y en la mesa (PBI-21).
+- `sonidos.gd` — autoload `Sonidos` (PBI-21): carga los sonidos de `client/assets/sonidos/` (créditos y licencias en su `CREDITOS.md`) y los reproduce por nombre (`repartir`, `robar`, `carta`, `turno`), una variante al azar de cada uno. Con `Ajustes.sonido` desactivado no suena nada. Qué sonido toca en cada momento lo decide la mesa (`ui/mesa/sonidos_mesa.gd`) comparando el `estado_partida` anterior con el nuevo, sin que el servidor ni el protocolo sepan nada de sonidos.
+
 ---
 
 ## 3. Tecnologías por componente
