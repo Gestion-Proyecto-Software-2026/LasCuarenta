@@ -242,3 +242,39 @@ func test_abajo_a_la_izquierda() -> void:
 	assert_eq(chat.position.x, ChatMesa.MARGEN)
 	assert_almost_eq(chat.position.y + chat.size.y, alto - ChatMesa.MARGEN, 0.5)
 	assert_eq(chat.size, ChatMesa.TAMANO)
+
+
+# --- Ajustes (PBI-21) ---
+
+func test_el_boton_de_ajustes_va_en_la_cabecera_entre_el_titulo_y_minimizar() -> void:
+	await _abrir()
+	var cabecera: Node = chat.boton_ajustes.get_parent()
+	assert_eq(cabecera, chat.boton_minimizar.get_parent())
+	assert_eq(chat.boton_ajustes.get_index(), chat.boton_minimizar.get_index() - 1)
+	assert_eq((cabecera.get_child(0) as Label).text, "Chat de la mesa")
+	assert_true(chat.boton_ajustes.is_visible_in_tree())
+	assert_false(chat.boton_ajustes_minimizado.visible, "el de abajo solo con el chat minimizado")
+
+
+func test_los_dos_botones_de_ajustes_avisan() -> void:
+	await _abrir()
+	watch_signals(chat)
+	chat.boton_ajustes.pressed.emit()
+	assert_signal_emit_count(chat, "ajustes_pulsado", 1)
+	chat.minimizar()
+	assert_true(chat.boton_ajustes_minimizado.visible)
+	chat.boton_ajustes_minimizado.pressed.emit()
+	assert_signal_emit_count(chat, "ajustes_pulsado", 2)
+	chat.abrir()
+	assert_false(chat.boton_ajustes_minimizado.visible)
+
+
+func test_minimizado_ajustes_va_junto_a_chat_sin_taparlo() -> void:
+	await _abrir()
+	chat.minimizar()
+	await wait_frames(1)
+	var abrir: Rect2 = chat.boton_abrir.get_global_rect()
+	var ajustes: Rect2 = chat.boton_ajustes_minimizado.get_global_rect()
+	assert_false(abrir.intersects(ajustes), "no se solapan")
+	assert_gt(ajustes.position.x, abrir.position.x, "a la derecha de Chat")
+	assert_almost_eq(ajustes.end.y, abrir.end.y, 0.5, "en la misma línea")

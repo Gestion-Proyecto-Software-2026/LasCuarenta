@@ -141,3 +141,34 @@ func test_el_boton_de_historial_abre_la_pantalla_de_historial() -> void:
 	assert_true(_boton("BotonHistorial").pressed.is_connected(lobby._on_boton_historial_pressed))
 	assert_true(ResourceLoader.exists(lobby.ESCENA_HISTORIAL))
 	assert_true(load(lobby.ESCENA_HISTORIAL) is PackedScene)
+
+
+# --- Ajustes (PBI-21) ---
+
+func test_el_boton_de_ajustes_va_al_final_de_la_fila_despues_de_ranking() -> void:
+	var ajustes := _boton("BotonAjustes")
+	assert_not_null(ajustes)
+	assert_eq(ajustes.text, "Ajustes")
+	assert_true(ajustes.flat, "mismo estilo que Historial")
+	assert_eq(ajustes.get_index(), _boton("BotonRanking").get_index() + 1)
+	assert_eq(ajustes.get_index(), ajustes.get_parent().get_child_count() - 1)
+
+
+func test_el_boton_de_ajustes_abre_el_panel() -> void:
+	_boton("BotonAjustes").pressed.emit()
+	var panel: AcceptDialog = lobby.find_child("PanelAjustes", true, false)
+	assert_not_null(panel)
+	assert_true(panel.visible)
+	assert_eq(panel.title, "Ajustes")
+	assert_not_null(panel.casilla_sonido)
+	panel.hide()
+	_boton("BotonAjustes").pressed.emit()
+	assert_true(panel.visible, "se vuelve a abrir el mismo")
+	assert_eq(lobby.find_children("PanelAjustes", "", true, false).size(), 1)
+	panel.hide()
+
+
+func test_con_el_boton_de_ajustes_el_lobby_sigue_cabiendo_en_la_ventana_base() -> void:
+	var minimo: Vector2 = lobby.find_child("PanelCartulina", true, false).get_combined_minimum_size()
+	assert_lt(minimo.x, 1152.0, "ancho mínimo del panel: %s" % minimo)
+	assert_lt(minimo.y, 648.0, "alto mínimo del panel: %s" % minimo)

@@ -51,6 +51,17 @@ const MUS := {
 
 var red
 var partida: Control
+var sonidos: SonidosFalso
+
+
+## Doble del autoload Sonidos (PBI-21): apunta lo que se reproduce, en orden.
+class SonidosFalso:
+	extends RefCounted
+	var reproducidos: Array[String] = []
+
+	func reproducir(nombre: String) -> bool:
+		reproducidos.append(nombre)
+		return true
 
 
 func _abrir(juego: String, jugadores: Array, estado: Dictionary, pausa := 0.0) -> void:
@@ -61,6 +72,8 @@ func _abrir(juego: String, jugadores: Array, estado: Dictionary, pausa := 0.0) -
 	partida = PARTIDA_MESA.instantiate()
 	partida.red = red
 	partida.pausa_baza = pausa
+	sonidos = SonidosFalso.new()
+	partida.sonidos = sonidos
 	add_child_autofree(partida)
 	await wait_frames(1)
 
@@ -444,3 +457,107 @@ func test_el_chat_no_tapa_la_etiqueta_del_jugador_de_la_izquierda() -> void:
 	assert_true(partida.chat.position.y >= etiqueta.position.y + etiqueta.size.y,
 		"el chat empieza por debajo de la etiqueta de la izquierda")
 	assert_almost_eq(partida.chat.position.y + partida.chat.size.y, alto - 10.0, 0.5, "pegado abajo")
+
+
+# --- Sonidos y ajustes (PBI-21) ---
+
+func test_al_empezar_suena_el_reparto_y_el_aviso_de_turno() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	assert_eq(sonidos.reproducidos, ["repartir", "turno"] as Array[String])
+
+
+func test_si_no_me_toca_solo_suena_el_reparto() -> void:
+	await _abrir("guinote", JUGADORES_2, _con(GUINOTE, {"turno": 1, "jugadas_validas": [],
+		"tiempos_para_decidir": [{"posicion": 1, "segundos": 45.0, "ausente": false}]}))
+	assert_eq(sonidos.reproducidos, ["repartir"] as Array[String])
+
+
+func test_la_carta_del_rival_suena_y_luego_me_toca() -> void:
+	await _abrir("guinote", JUGADORES_2, _con(GUINOTE, {"turno": 1, "jugadas_validas": []}))
+	sonidos.reproducidos.clear()
+	red.estado_actualizado.emit(_con(GUINOTE, {
+		"cartas_por_jugador": [6, 5], "baza_actual": [{"jugador_id": 1, "carta_id": "espadas_1"}],
+		"ultima_jugada": {"numero": 1, "jugador_id": 1, "tipo": "jugar_carta", "carta_id": "espadas_1"},
+	}))
+	assert_eq(sonidos.reproducidos, ["carta", "turno"] as Array[String])
+
+
+func test_mi_carta_suena_cuando_el_servidor_la_acepta() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	sonidos.reproducidos.clear()
+	_tapete()._jugar_carta_en_mesa(_tapete().cartas_en_mano[0])
+	assert_eq(sonidos.reproducidos, [] as Array[String], "todavía no")
+	red.estado_actualizado.emit(_con(GUINOTE, {
+		"turno": 1, "mi_mano": GUINOTE["mi_mano"].slice(1), "cartas_por_jugador": [5, 6],
+		"baza_actual": [{"jugador_id": 0, "carta_id": "oros_1"}], "jugadas_validas": [],
+		"ultima_jugada": {"numero": 1, "jugador_id": 0, "tipo": "jugar_carta", "carta_id": "oros_1"},
+	}))
+	assert_eq(sonidos.reproducidos, ["carta"] as Array[String])
+
+
+func test_la_carta_suena_al_verse_y_el_robo_al_recoger_la_baza() -> void:
+	var con_una := _con(GUINOTE, {
+		"turno": 1, "mi_mano": GUINOTE["mi_mano"].slice(1), "cartas_por_jugador": [5, 6],
+		"baza_actual": [{"jugador_id": 0, "carta_id": "oros_1"}], "jugadas_validas": [],
+		"ultima_jugada": {"numero": 1, "jugador_id": 0, "tipo": "jugar_carta", "carta_id": "oros_1"},
+	})
+	await _abrir("guinote", JUGADORES_2, con_una, 0.3)
+	sonidos.reproducidos.clear()
+	red.estado_actualizado.emit(_con(GUINOTE, {
+		"turno": 0, "cartas_en_mazo": 26, "cartas_por_jugador": [6, 6], "baza_actual": [],
+		"mi_mano": GUINOTE["mi_mano"].slice(1) + ["bastos_2"],
+		"ultima_jugada": {"numero": 2, "jugador_id": 1, "tipo": "jugar_carta", "carta_id": "espadas_1"},
+	}))
+	assert_eq(sonidos.reproducidos, ["carta"] as Array[String], "mientras se ve la baza, solo la carta")
+	await wait_seconds(0.5)
+	assert_eq(sonidos.reproducidos, ["carta", "robar", "turno"] as Array[String])
+
+
+func test_un_estado_repetido_no_vuelve_a_sonar() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	sonidos.reproducidos.clear()
+	red.estado_actualizado.emit(GUINOTE)
+	assert_eq(sonidos.reproducidos, [] as Array[String])
+
+
+func test_en_pausa_no_suena_el_turno_y_al_reanudarse_si() -> void:
+	await _abrir("guinote", JUGADORES_2, _con(GUINOTE, {"turno": 1, "jugadas_validas": []}))
+	_denunciar()
+	sonidos.reproducidos.clear()
+	red.estado_actualizado.emit(_con(GUINOTE, {
+		"ultima_jugada": {"numero": 1, "jugador_id": 1, "tipo": "jugar_carta", "carta_id": "espadas_1"},
+		"tiempos_para_decidir": [{"posicion": 0, "segundos": 40.0, "ausente": false}]}))
+	assert_eq(sonidos.reproducidos, ["carta"] as Array[String], "en pausa, sin aviso de turno")
+	_denunciar("no_admitida")
+	red.estado_actualizado.emit(_con(GUINOTE, {
+		"ultima_jugada": {"numero": 1, "jugador_id": 1, "tipo": "jugar_carta", "carta_id": "espadas_1"},
+		"tiempos_para_decidir": [{"posicion": 0, "segundos": 40.0, "ausente": false}]}))
+	assert_eq(sonidos.reproducidos, ["carta", "turno"] as Array[String], "al reanudarse, te toca")
+
+
+func test_al_terminar_la_partida_no_suena_nada() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	sonidos.reproducidos.clear()
+	red.partida_terminada.emit({
+		"equipo_ganador": 0, "puntos_por_equipo": [101, 40], "motivo": "tantos",
+		"manos": [{"total": [101, 40], "cartas": [81, 40], "cantes": [20, 0], "diez_ultimas": [0, 0]}],
+	})
+	red.estado_actualizado.emit(_con(GUINOTE, {"ultima_jugada": {"numero": 9, "jugador_id": 1,
+		"tipo": "jugar_carta", "carta_id": "espadas_1"}}))
+	assert_eq(sonidos.reproducidos, [] as Array[String])
+
+
+func test_el_chat_tiene_el_boton_de_ajustes_y_abre_el_panel() -> void:
+	await _abrir("guinote", JUGADORES_2, GUINOTE)
+	assert_eq(partida.chat.boton_ajustes.text, "Ajustes")
+	assert_null(partida.panel_ajustes, "no se crea hasta que hace falta")
+	partida.chat.boton_ajustes.pressed.emit()
+	assert_not_null(partida.panel_ajustes)
+	assert_true(partida.panel_ajustes.visible, "se abre el panel")
+	assert_eq(partida.panel_ajustes.title, "Ajustes")
+	partida.panel_ajustes.hide()
+	partida.chat.minimizar()
+	partida.chat.boton_ajustes_minimizado.pressed.emit()
+	assert_true(partida.panel_ajustes.visible, "también con el chat minimizado, y es el mismo panel")
+	assert_eq(partida.find_children("PanelAjustes", "", false, false).size(), 1)
+	partida.panel_ajustes.hide()

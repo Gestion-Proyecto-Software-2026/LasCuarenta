@@ -9,6 +9,14 @@ extends Control
 ## está pendiente se enseña aquí, con su cuenta atrás y, si eres de la parte
 ## denunciada, los botones para admitirla o no. Lo decide todo el servidor; aquí
 ## solo se pinta lo que manda (chat_mensaje, chat_historial, denuncia_chat).
+##
+## En la cabecera (y junto a "Chat" con el chat minimizado) está también el
+## botón de los ajustes del cliente (PBI-21), para no llenar la mesa de botones
+## sueltos: este chat solo avisa con [signal ajustes_pulsado] y el panel lo
+## abre partida_mesa.gd.
+
+## El jugador quiere abrir los ajustes (sonido...).
+signal ajustes_pulsado
 
 const Tapete := preload("res://client/ui/mesa/tapete_mesa.gd")
 const Textos := preload("res://client/ui/mesa/textos_mesa.gd")
@@ -32,6 +40,9 @@ var boton_enviar: Button
 var boton_minimizar: Button
 ## Lo único que se ve con el chat minimizado: "Chat (3)" con los no leídos.
 var boton_abrir: Button
+## "Ajustes" en la cabecera del chat y, con el chat minimizado, junto a "Chat".
+var boton_ajustes: Button
+var boton_ajustes_minimizado: Button
 var panel_denuncia: PanelContainer
 var texto_denuncia: Label
 var cuenta_denuncia: Label
@@ -87,12 +98,14 @@ func marcar_terminada() -> void:
 func minimizar() -> void:
 	_panel.hide()
 	boton_abrir.show()
+	boton_ajustes_minimizado.show()
 	_actualizar_boton_abrir()
 
 
 func abrir() -> void:
 	no_leidos = 0
 	boton_abrir.hide()
+	boton_ajustes_minimizado.hide()
 	_panel.show()
 
 
@@ -325,6 +338,9 @@ func _construir() -> void:
 	titulo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titulo.add_theme_font_size_override("font_size", 14)
 	cabecera.add_child(titulo)
+	boton_ajustes = _crear_boton_ajustes("BotonAjustes")
+	boton_ajustes.add_theme_font_size_override("font_size", 12)
+	cabecera.add_child(boton_ajustes)
 	boton_minimizar = Button.new()
 	boton_minimizar.name = "BotonMinimizar"
 	boton_minimizar.text = "–"
@@ -414,6 +430,15 @@ func _construir() -> void:
 	boton_abrir.pressed.connect(abrir)
 	add_child(boton_abrir)
 	boton_abrir.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	boton_ajustes_minimizado = _crear_boton_ajustes("BotonAjustesMinimizado")
+	boton_ajustes_minimizado.custom_minimum_size = Vector2(90, 34)
+	boton_ajustes_minimizado.hide()
+	add_child(boton_ajustes_minimizado)
+	# A la derecha de "Chat", en la misma línea.
+	boton_ajustes_minimizado.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	var hueco := boton_abrir.custom_minimum_size.x + 6.0
+	boton_ajustes_minimizado.offset_left += hueco
+	boton_ajustes_minimizado.offset_right += hueco
 
 	dialogo_denuncia = ConfirmationDialog.new()
 	dialogo_denuncia.name = "DialogoDenuncia"
@@ -422,3 +447,13 @@ func _construir() -> void:
 	dialogo_denuncia.cancel_button_text = "Cancelar"
 	dialogo_denuncia.confirmed.connect(_on_denuncia_confirmada)
 	add_child(dialogo_denuncia)
+
+
+func _crear_boton_ajustes(nombre: String) -> Button:
+	var boton := Button.new()
+	boton.name = nombre
+	boton.text = "Ajustes"
+	boton.tooltip_text = "Ajustes del juego (sonido)"
+	boton.focus_mode = Control.FOCUS_NONE
+	boton.pressed.connect(ajustes_pulsado.emit)
+	return boton
