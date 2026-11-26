@@ -1,16 +1,16 @@
 extends Node
-## Preferencias del jugador en este ordenador (PBI-21): de momento, si suenan
-## los sonidos. Se guardan con ConfigFile en [constant RUTA_POR_DEFECTO] (en
+## Preferencias del jugador en este ordenador: si suenan los sonidos (PBI-21)
+## y si se animan las cartas de la mesa (PBI-22). Se guardan con ConfigFile en [constant RUTA_POR_DEFECTO] (en
 ## Windows, %APPDATA%/Godot/app_userdata/Cartas Online/ajustes.cfg) para que se
 ## recuerden al volver a abrir la aplicación. No van al backend: son de este
 ## ordenador, no de la cuenta.
 ##
 ## Quien necesite un ajuste lo lee de aquí y escucha [signal cambiado] para
 ## enterarse si el jugador lo cambia mientras está abierto (p. ej. el autoload
-## Sonidos se calla al desactivarlo). Lo cambia el panel de ajustes
+## Sonidos se calla al desactivarlo, y la mesa deja de animar). Lo cambia el panel de ajustes
 ## (client/ui/ajustes/panel_ajustes.gd).
 
-## Un ajuste ha cambiado: [param clave] es su nombre ("sonido") y [param valor] el nuevo.
+## Un ajuste ha cambiado: [param clave] es su nombre ("sonido", "animaciones") y [param valor] el nuevo.
 signal cambiado(clave: String, valor: Variant)
 
 const RUTA_POR_DEFECTO := "user://ajustes.cfg"
@@ -21,6 +21,8 @@ const SECCION := "cliente"
 var ruta := RUTA_POR_DEFECTO
 ## Si suenan los sonidos de la mesa (PBI-21).
 var sonido := true
+## Si las cartas vuelan por la mesa al repartir, robar y cambiar el siete (PBI-22).
+var animaciones := true
 
 
 func _ready() -> void:
@@ -31,16 +33,19 @@ func _ready() -> void:
 ## los valores por defecto: no es un error, solo que aún no se ha cambiado nada.
 func cargar() -> void:
 	sonido = true
+	animaciones = true
 	var archivo := ConfigFile.new()
 	if not FileAccess.file_exists(ruta) or archivo.load(ruta) != OK:
 		return
 	sonido = _leer_bool(archivo, "sonido", true)
+	animaciones = _leer_bool(archivo, "animaciones", true)
 
 
 ## Escribe todos los ajustes en [member ruta].
 func guardar() -> void:
 	var archivo := ConfigFile.new()
 	archivo.set_value(SECCION, "sonido", sonido)
+	archivo.set_value(SECCION, "animaciones", animaciones)
 	var error := archivo.save(ruta)
 	if error != OK:
 		# Sin poder guardar se sigue jugando igual: solo no se recordará.
@@ -53,6 +58,14 @@ func poner_sonido(activado: bool) -> void:
 	sonido = activado
 	guardar()
 	cambiado.emit("sonido", activado)
+
+
+func poner_animaciones(activadas: bool) -> void:
+	if animaciones == activadas:
+		return
+	animaciones = activadas
+	guardar()
+	cambiado.emit("animaciones", activadas)
 
 
 ## Un valor del fichero solo vale si es del tipo esperado (lo puede haber

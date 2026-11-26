@@ -34,6 +34,8 @@ const TAMANO_BASE := Vector2i(1152, 648)
 var red = ClienteRed
 ## Igual: el autoload Sonidos (PBI-21) o un doble que apunta lo que suena.
 var sonidos = Sonidos
+## Igual: el autoload Ajustes, del que la mesa lee si se anima (PBI-22).
+var ajustes = Ajustes
 ## Segundos que la baza completa se queda a la vista antes de recogerla. Con 0
 ## no hay pausas (tests).
 var pausa_baza := 2.0
@@ -75,6 +77,7 @@ func _ready() -> void:
 	tapete = ESCENA_TAPETE.instantiate()
 	tapete.name = "Tapete"
 	tapete.autojugar = autojugar
+	tapete.ajustes = ajustes
 	add_child(tapete)
 	tapete.jugada_solicitada.connect(_on_jugada_solicitada)
 	_crear_cuenta_atras()
@@ -142,6 +145,8 @@ func abrir_ajustes() -> void:
 	if panel_ajustes == null:
 		panel_ajustes = PanelAjustes.new()
 		panel_ajustes.name = "PanelAjustes"
+		# Los mismos que usa la mesa (en los tests, una instancia de prueba).
+		panel_ajustes.ajustes = ajustes
 		add_child(panel_ajustes)
 	panel_ajustes.popup_centered()
 
@@ -280,6 +285,11 @@ func _mostrar_jugada(jugada: Dictionary, anterior: Dictionary, estado: Dictionar
 			await _pausa(pausa_baza)
 	else:
 		tapete.anunciar(quien, Textos.anuncio(jugada, anterior, estado))
+		if jugada.get("tipo") == MensajesRed.CAMBIAR_SIETE:
+			# El 7 es la pinta nueva y lo que se lleva el jugador, la de antes.
+			var siete: Variant = estado.get("pinta")
+			var antigua: Variant = anterior.get("pinta")
+			tapete.animar_cambio_siete(quien, siete if siete is String else "", antigua if antigua is String else "")
 	if not is_inside_tree():
 		return
 

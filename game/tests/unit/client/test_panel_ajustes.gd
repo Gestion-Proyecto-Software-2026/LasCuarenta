@@ -1,7 +1,7 @@
 extends GutTest
-## Panel de ajustes del cliente (PBI-21): la casilla del sonido refleja el
-## ajuste y al pulsarla lo cambia (y se guarda). Con unos ajustes de prueba en
-## un fichero temporal, nunca con los de verdad.
+## Panel de ajustes del cliente (PBI-21 y PBI-22): las casillas del sonido y
+## de las animaciones reflejan su ajuste y al pulsarlas lo cambian (y se guarda).
+## Con unos ajustes de prueba en un fichero temporal, nunca con los de verdad.
 
 const PanelAjustes := preload("res://client/ui/ajustes/panel_ajustes.gd")
 const AjustesScript := preload("res://client/autoload/ajustes.gd")
@@ -91,3 +91,30 @@ func _abrir_o_reabrir() -> void:
 		await wait_frames(1)
 	else:
 		await _abrir()
+
+
+# --- Animaciones (PBI-22) ---
+
+func test_hay_una_casilla_de_animaciones_debajo_del_sonido() -> void:
+	await _abrir()
+	assert_eq(panel.casilla_animaciones.text, "Animaciones")
+	assert_gt(panel.casilla_animaciones.get_index(), panel.casilla_sonido.get_index())
+
+
+func test_la_casilla_de_animaciones_refleja_el_ajuste() -> void:
+	await _abrir()
+	assert_true(panel.casilla_animaciones.button_pressed)
+	panel.hide()
+	ajustes.animaciones = false
+	panel.popup_centered()
+	assert_false(panel.casilla_animaciones.button_pressed, "se vuelve a leer al abrirse")
+
+
+func test_pulsar_la_casilla_de_animaciones_cambia_y_guarda_el_ajuste() -> void:
+	await _abrir()
+	panel.casilla_animaciones.button_pressed = false
+	assert_false(ajustes.animaciones)
+	assert_true(ajustes.sonido, "el sonido no se toca")
+	assert_true(FileAccess.file_exists(RUTA), "se guarda sin tener que confirmar")
+	panel.casilla_animaciones.button_pressed = true
+	assert_true(ajustes.animaciones)

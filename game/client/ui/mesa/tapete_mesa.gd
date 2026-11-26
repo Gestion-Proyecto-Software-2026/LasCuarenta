@@ -12,8 +12,13 @@ extends Control
 ##
 ## Los jugadores se identifican por su asiento (0 … n-1), que es el
 ## `jugador_id` de los motores y el `posicion` del protocolo.
+##
+## Las cartas que llegan (reparto, robo) vuelan desde el mazo y el cambio del
+## siete se ve cruzarse (PBI-22): lo lleva animaciones_mesa.gd, solo en lo que
+## se ve; la mano, la baza y lo que se envía son los mismos con animaciones o sin ellas.
 
 const ESCENA_CARTA := preload("res://client/ui/mesa/carta_mesa.tscn")
+const AnimacionesMesa := preload("res://client/ui/mesa/animaciones_mesa.gd")
 
 ## Fondo de la mesa. Para cambiarlo basta con sustituir esta imagen; si no
 ## existe, se pinta un tapete verde provisional.
@@ -85,6 +90,11 @@ var autocantar: bool = true
 ## Con autojugar, lo que tarda en echar carta y en pulsar un botón.
 var espera_autojugar_carta := 0.15
 var espera_autojugar_accion := 0.05
+## De dónde sale si se anima la mesa (PBI-22). Inyectable en tests (una
+## instancia de ajustes.gd con una ruta temporal); se lee en configurar_mesa().
+var ajustes = Ajustes
+## Los vuelos de las cartas (PBI-22); se crea en _ready().
+var animaciones: AnimacionesMesa
 
 ## Juego de la mesa: "guinote", "tute" (por parejas), "tute_dos" o "mus".
 var _juego := ""
@@ -111,10 +121,18 @@ var _registro := PackedStringArray()
 var _panel_depuracion: PanelContainer
 var _texto_depuracion: Label
 var _panel_resultado: PanelContainer
+## Cartas que acaba de crear generar_mano_desde_array(): reorganizar_mano() las
+## hace volar del mazo a su hueco (o, sin animaciones, las pone ya en él).
+var _por_llegar: Array = []
 
 
 func _ready() -> void:
 	_crear_fondo()
+	# Después de la mano: así recibe el clic antes que las cartas y lo que esté
+	# volando ya está en su sitio cuando la carta lo atiende.
+	animaciones = AnimacionesMesa.new()
+	animaciones.name = "Animaciones"
+	add_child(animaciones)
 	get_viewport().size_changed.connect(_recolocar_mesa)
 
 
@@ -122,15 +140,27 @@ func _ready() -> void:
 # LA MANO
 # ==========================================
 
+## Las cartas nuevas nacen en el mazo y reorganizar_mano() las lleva a su hueco
+## volando, o directamente sin animaciones.
 func generar_mano_desde_array(cartas_ids: Array) -> void:
+	var origen: Vector2 = global_position + _origen_reparto() - nodo_mano.global_position
 	for id in cartas_ids:
 		var nueva_carta = ESCENA_CARTA.instantiate()
 		nueva_carta.escala_base = ESCALA_MESA
 		nodo_mano.add_child(nueva_carta)
 		nueva_carta.inicializar(id)
 		nueva_carta.carta_soltada.connect(_on_carta_soltada)
+		# La carta se anima sola al entrar en el árbol (desde la esquina de la
+		# mano); aquí la lleva la mano, desde el mazo.
+		if nueva_carta.tween_actual:
+			nueva_carta.tween_actual.kill()
+		nueva_carta.scale = Vector2.ONE * ESCALA_MESA
+		nueva_carta.position = origen
+		nueva_carta.rotation_degrees = 0.0
 		cartas_en_mano.append(nueva_carta)
+		_por_llegar.append(nueva_carta)
 	reorganizar_mano()
+	_por_llegar.clear()
 
 
 func reorganizar_mano() -> void:
@@ -167,8 +197,19 @@ func reorganizar_mano() -> void:
 		# La carta solo se mueve si no se está arrastrando ni está en hover.
 		if carta.current_state == CartaMesa.State.IDLE:
 			carta.z_index = i
+			var volando := animaciones.vuela(carta)
 			if carta.tween_abanico:
 				carta.tween_abanico.kill()
+			# Una carta nueva vuela del mazo a su hueco; si aún estaba llegando,
+			# sigue volando al hueco nuevo (y se puede saltar como las demás).
+			if (_por_llegar.has(carta) and animaciones.activadas) or volando:
+				carta.tween_abanico = animaciones.llevar_carta(carta, mi_asiento)
+				continue
+			if _por_llegar.has(carta):
+				carta.tween_abanico = null
+				carta.position = carta.pos_base
+				carta.rotation_degrees = carta.rot_base
+				continue
 			carta.tween_abanico = FuncionesGlobales.lanzar_tweens_simultaneos([
 				{"prop": "position", "valor": carta.pos_base, "dur": 0.4, "trans": Tween.TRANS_CUBIC, "ease": Tween.EASE_OUT},
 				{"prop": "rotation_degrees", "valor": carta.rot_base, "dur": 0.4, "trans": Tween.TRANS_CUBIC, "ease": Tween.EASE_OUT}
@@ -341,6 +382,9 @@ func configurar_mesa(p_juego: String, p_nombres: Array, p_mi_asiento: int, id_pi
 	mi_asiento = p_mi_asiento
 	restantes.clear()
 	_textura_dorso = load(RUTA_CARTAS % CartaMesa.ID_DORSO)
+	animaciones.activadas = ajustes.animaciones
+	if not ajustes.cambiado.is_connected(_on_ajuste_cambiado):
+		ajustes.cambiado.connect(_on_ajuste_cambiado)
 	for asiento in num_jugadores:
 		_crear_etiqueta_jugador(asiento)
 	var yo := _nombre_o_abreviatura(mi_asiento)
@@ -356,6 +400,13 @@ func configurar_mesa(p_juego: String, p_nombres: Array, p_mi_asiento: int, id_pi
 			yo, _palo_de(id_pinta), _nombre_carta(id_pinta), _nombre_o_abreviatura(dador)]
 	_depurar("Mesa lista. " + _info_partida.replace("\n", " · "))
 	_recolocar_mesa()
+
+
+## El jugador ha cambiado un ajuste con la mesa abierta: si desactiva las
+## animaciones, lo que esté volando llega ya.
+func _on_ajuste_cambiado(clave: String, valor: Variant) -> void:
+	if clave == "animaciones":
+		animaciones.activadas = valor
 
 
 ## Oscurece las cartas que no puedes echar. Lista vacía = no es tu turno.
@@ -416,6 +467,8 @@ func mostrar_resultado(texto: String) -> void:
 func actualizar_vista(vista: Dictionary, jugadas: Array) -> void:
 	_vista = vista
 	_palo_triunfo = vista.get("palo_triunfo", _palo_triunfo)
+	# Lo que llega con esta vista (reparto, robo) sale junto del mazo, por turnos.
+	animaciones.empezar_tanda()
 	_sincronizar_mano(vista.get("mi_mano", []))
 	_sincronizar_baza(vista.get("baza_actual", []))
 	var cartas_por_jugador: Array = vista.get("cartas_por_jugador", [])
@@ -442,6 +495,35 @@ func actualizar_vista(vista: Dictionary, jugadas: Array) -> void:
 	else:
 		_mostrar_acciones(acciones)
 		_poner_marcador(_marcador_de_bazas(vista))
+	# Al final: el Mus recoloca la mano al actualizarse y las cartas que llegan
+	# tienen que salir ya hacia su hueco definitivo. Recibe primero el que juega
+	# (al repartir, el que es mano; al robar, el que ha ganado la baza).
+	var primero: Variant = vista.get("turno")
+	animaciones.lanzar_tanda(primero if primero is int and _es_asiento(primero) else mi_asiento, num_jugadores)
+
+
+## Cambio del siete (PBI-22): el 7 vuela del jugador al sitio de la pinta y la
+## pinta antigua hace el camino contrario. Si el que cambia eres tú, basta con el
+## 7: tu pinta nueva ya vuela desde el mazo como carta nueva de la mano. Se llama
+## antes de pintar la vista nueva (con el 7 todavía en la mano).
+func animar_cambio_siete(quien: int, id_siete: String, id_pinta_antigua: String) -> void:
+	if not animaciones.activadas or not _es_asiento(quien):
+		return
+	var pinta := _pos_pinta()
+	var giro_pinta := 0.0
+	if _con_mazo:
+		pinta = _pos_pila() + Vector2(62, 0)
+		giro_pinta = 90.0
+	var jugador := _pos_dorsos(_posicion_relativa(quien))
+	if quien == mi_asiento:
+		jugador = _centro_mano()
+		for carta in cartas_en_mano:
+			if carta.id == id_siete:
+				jugador = carta.global_position - global_position
+	if id_siete != "" and ResourceLoader.exists(RUTA_CARTAS % id_siete):
+		animaciones.lanzar_fantasma(self, load(RUTA_CARTAS % id_siete), ESCALA_MESA, jugador, pinta, 0.0, giro_pinta)
+	if quien != mi_asiento and id_pinta_antigua != "" and ResourceLoader.exists(RUTA_CARTAS % id_pinta_antigua):
+		animaciones.lanzar_fantasma(self, load(RUTA_CARTAS % id_pinta_antigua), ESCALA_MESA, pinta, jugador, giro_pinta, 0.0)
 
 
 ## Un jugador dice algo en voz alta ("¡Las 40!", "Capote"...): sale junto a su
@@ -667,6 +749,15 @@ func _pos_pila() -> Vector2:
 	return _centro_baza() + DESPLAZAMIENTO_PILA
 
 
+## De dónde salen las cartas al repartir y robar: el mazo o, en el Tute por
+## parejas (que no tiene), el centro de la mesa.
+func _origen_reparto() -> Vector2:
+	# Siempre el sitio del mazo, también en el Tute por parejas, que no tiene: el
+	# centro no vale porque es donde se sueltan las cartas para jugarlas, y una
+	# carta que espera allí su turno de salir se podría jugar con un simple clic.
+	return _pos_pila()
+
+
 ## La pila del mazo: la pinta atravesada debajo y encima los dorsos que quedan.
 ## Cuando se acaba, queda escrito cuál es el triunfo.
 func _dibujar_pila(cantidad: int, pinta: String) -> void:
@@ -851,18 +942,29 @@ func _dibujar_dorsos(asiento: int) -> void:
 		grupo.name = "Dorsos%d" % asiento
 		add_child(grupo)
 		dorsos[asiento] = grupo
-	for hijo in grupo.get_children():
-		grupo.remove_child(hijo)
-		hijo.queue_free()
 	grupo.position = _pos_dorsos(relativa)
 	grupo.rotation_degrees = 180.0 if relativa == 2 else 90.0
 	var cuantas: int = restantes.get(asiento, 0)
+	var antes := grupo.get_child_count()
+	# Si tiene las mismas, se quedan como están (también las que aún llegan).
+	if cuantas == antes:
+		return
+	# Se liberan ya (son sprites sueltos, nadie más los usa): fuera del árbol a la
+	# espera de queue_free quedarían huérfanos hasta el final del frame.
+	for hijo in grupo.get_children():
+		hijo.free()
+	# Las que tiene de más (reparto, robo) salen del mazo.
+	var origen := grupo.to_local(global_position + _origen_reparto())
 	for i in cuantas:
 		var dorso := Sprite2D.new()
 		dorso.texture = _textura_dorso
 		dorso.scale = Vector2.ONE * ESCALA_DORSO
-		dorso.position = Vector2((i - (cuantas - 1) / 2.0) * SEPARACION_DORSOS, 0)
+		var sitio := Vector2((i - (cuantas - 1) / 2.0) * SEPARACION_DORSOS, 0)
+		dorso.position = sitio
 		grupo.add_child(dorso)
+		if i >= antes and animaciones.activadas:
+			dorso.position = origen
+			animaciones.llevar_dorso(dorso, asiento, sitio)
 
 
 func _colocar_pinta() -> void:
