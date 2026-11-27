@@ -40,6 +40,7 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI-09 — Moderación de salas | Baja | ✅ En la sala de espera el creador ve quién está sentado, puede expulsar a cualquiera antes de empezar (su plaza queda libre) y arranca la partida con EMPEZAR |
 | PBI-12 — Unificación de los tres juegos bajo un mismo estilo visual | Alta | ✅ Guiñote, Tute y Mus, 1 contra 1 y por parejas, en la misma mesa (`game/client/ui/mesa/`) contra el servidor de partida |
 | PBI-21 — Sonidos | Baja | ✅ Suena una carta al repartir, al robar y al jugarla, y un aviso cuando te toca jugar. Se silencian desde *Ajustes* y el cliente lo recuerda al volver a abrirlo ([sección 5.4](#54-ajustes-del-cliente)). Sonidos libres (CC0), unos 105 KB, con la fuente de cada uno en los [créditos](#créditos) |
+| PBI-22 — Animaciones de la mesa | Baja | ✅ Las cartas vuelan del mazo a cada jugador al repartir y al robar (en el Tute por parejas, que no tiene mazo, del sitio donde estaría), y el siete de triunfo y la pinta se cruzan al cambiarlos. Cada animación dura menos de 1 s y se salta al pulsar; son solo visuales, así que no cambian el estado de la partida. Se desactivan desde *Ajustes* ([sección 5.4](#54-ajustes-del-cliente)) |
 
 **Todavía no se puede jugar una partida de principio a fin desde el cliente.** Los motores de Guiñote y Mus funcionan y están probados, pero faltan piezas que no pertenecen a ninguna PBI de juego:
 
@@ -241,6 +242,7 @@ Las preferencias del jugador se cambian en el panel *Ajustes*:
 | Ajuste | Por defecto | Qué hace |
 |---|---|---|
 | Sonido | Activado | Sonidos de la partida (PBI-21): reparto, robo, carta jugada y aviso de turno. Al desactivarlo se para lo que esté sonando |
+| Animaciones | Activado | Animaciones de la mesa (PBI-22): reparto, robo y cambio del siete. Al desactivarlas, las cartas aparecen directamente en su sitio y se termina al instante lo que estuviera en vuelo |
 
 Los guarda el autoload `Ajustes` en `user://ajustes.cfg` (sección `cliente`), así que se recuerdan al volver a abrir la aplicación. Son de cada ordenador, no de la cuenta:
 

@@ -1,5 +1,5 @@
 extends AcceptDialog
-## Panel de ajustes del cliente (PBI-21): una casilla por ajuste del autoload
+## Panel de ajustes del cliente (PBI-21 y PBI-22): una casilla por ajuste del autoload
 ## Ajustes, que se guarda en cuanto se pulsa (no hay que confirmar nada; el
 ## botón solo cierra). Se abre desde el lobby (botón "Ajustes") y desde la mesa
 ## (botón "Ajustes" del chat). Construido en código, como chat_mesa.gd.
@@ -11,6 +11,8 @@ var ajustes = Ajustes
 
 ## "Sonido": si suenan las cartas y el aviso de turno (PBI-21).
 var casilla_sonido: CheckButton
+## "Animaciones": si las cartas vuelan por la mesa (PBI-22).
+var casilla_animaciones: CheckButton
 
 ## Donde van las casillas, una debajo de otra.
 var _casillas: VBoxContainer
@@ -28,10 +30,15 @@ func _ready() -> void:
 ## Pone las casillas como están los ajustes, sin volver a guardarlos.
 func leer_ajustes() -> void:
 	casilla_sonido.set_pressed_no_signal(ajustes.sonido)
+	casilla_animaciones.set_pressed_no_signal(ajustes.animaciones)
 
 
 func _on_sonido_cambiado(activado: bool) -> void:
 	ajustes.poner_sonido(activado)
+
+
+func _on_animaciones_cambiado(activadas: bool) -> void:
+	ajustes.poner_animaciones(activadas)
 
 
 func _construir() -> void:
@@ -45,6 +52,8 @@ func _construir() -> void:
 	columna.add_child(_casillas)
 	casilla_sonido = _crear_casilla("CasillaSonido", "Sonido", "Las cartas al repartir, robar y jugarlas, y un aviso cuando te toca.")
 	casilla_sonido.toggled.connect(_on_sonido_cambiado)
+	casilla_animaciones = _crear_casilla("CasillaAnimaciones", "Animaciones", "Las cartas vuelan del mazo al repartir y robar, y al cambiar el siete. Se saltan pulsando en la mesa.")
+	casilla_animaciones.toggled.connect(_on_animaciones_cambiado)
 
 	var nota := Label.new()
 	nota.text = "Se guardan en este ordenador y se recuerdan al volver a abrir el juego."
