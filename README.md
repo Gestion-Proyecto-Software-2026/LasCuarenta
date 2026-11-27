@@ -39,6 +39,7 @@ La pila del producto tiene 9 PBI (talla y prioridad según la Práctica 1). Cada
 | PBI-08 — Chat en partida | Baja | ✅ Chat de la mesa, aislado por sala y por su propio canal de ENet, con nombre y color de cada jugador; se conserva al reconectarse y tras la partida hasta que todos vuelven al lobby. Revelar cartas por el chat se puede denunciar: pausa la partida y, si se admite, gana la parte perjudicada por renuncio |
 | PBI-09 — Moderación de salas | Baja | ✅ En la sala de espera el creador ve quién está sentado, puede expulsar a cualquiera antes de empezar (su plaza queda libre) y arranca la partida con EMPEZAR |
 | PBI-12 — Unificación de los tres juegos bajo un mismo estilo visual | Alta | ✅ Guiñote, Tute y Mus, 1 contra 1 y por parejas, en la misma mesa (`game/client/ui/mesa/`) contra el servidor de partida |
+| PBI-21 — Sonidos | Baja | ✅ Suena una carta al repartir, al robar y al jugarla, y un aviso cuando te toca jugar. Se silencian desde *Ajustes* y el cliente lo recuerda al volver a abrirlo ([sección 5.4](#54-ajustes-del-cliente)). Sonidos libres (CC0), unos 105 KB, con la fuente de cada uno en los [créditos](#créditos) |
 
 **Todavía no se puede jugar una partida de principio a fin desde el cliente.** Los motores de Guiñote y Mus funcionan y están probados, pero faltan piezas que no pertenecen a ninguna PBI de juego:
 
@@ -117,8 +118,9 @@ La fuente es la Definición de Hecho de la Práctica 1:
 │   └── openapi.yaml         especificación de la API que se sirve en /api/docs
 ├── game/                    proyecto Godot (abrir game/project.godot)
 │   ├── client/              solo presentación e input
-│   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales
-│   │   ├── ui/              login, registro, recuperar, lobby, espera, historial, tema visual
+│   │   ├── assets/          texturas de cartas y mesa; sonidos/ con sus créditos (CREDITOS.md)
+│   │   ├── autoload/        ClienteApi (REST + JWT), FuncionesGlobales, Ajustes (preferencias), Sonidos
+│   │   ├── ui/              login, registro, recuperar, lobby, espera, historial, ajustes, tema visual
 │   │   │   └── mesa/        la mesa común de los tres juegos (PBI-12): tapete, cartas y pantalla de partida
 │   │   └── scenes/          carta, mesa (cada escena en su carpeta, junto a su script)
 │   ├── server/              lógica autoritativa; ningún script hereda de un nodo visual
@@ -228,6 +230,24 @@ Al arrancar escribe `Servidor de partida escuchando en UDP 9000 (backend: …, j
 3. El cliente usa `http://localhost:3000/api` como backend. Para apuntar a otro, definid la variable de entorno `BACKEND_URL` antes de abrir Godot.
 
 Para probar con varios jugadores, abrid varias instancias del cliente: en el editor, menú *Depurar → Personalizar instancias de ejecución…* (*Debug → Customize Run Instances…*). Usad una cuenta distinta en cada una.
+
+### 5.4 Ajustes del cliente
+
+Las preferencias del jugador se cambian en el panel *Ajustes*:
+
+- **En el lobby:** botón *Ajustes*, al final de la fila de acciones.
+- **En la mesa:** botón *Ajustes* en la cabecera del chat o, con el chat minimizado, junto a *Chat*.
+
+| Ajuste | Por defecto | Qué hace |
+|---|---|---|
+| Sonido | Activado | Sonidos de la partida (PBI-21): reparto, robo, carta jugada y aviso de turno. Al desactivarlo se para lo que esté sonando |
+
+Los guarda el autoload `Ajustes` en `user://ajustes.cfg` (sección `cliente`), así que se recuerdan al volver a abrir la aplicación. Son de cada ordenador, no de la cuenta:
+
+- **Windows:** `%APPDATA%/Godot/app_userdata/Cartas Online/ajustes.cfg`
+- **Linux:** `~/.local/share/godot/app_userdata/Cartas Online/ajustes.cfg`
+
+Para volver a los valores por defecto, basta con borrar ese fichero. Si falta o está corrupto, el cliente arranca con los valores por defecto sin dar error.
 
 ---
 
@@ -425,3 +445,7 @@ Según [`infra/nginx/nginx.conf`](infra/nginx/nginx.conf) y [`docs/arquitectura.
 ## 14. Licencia
 
 [MIT](LICENSE) © 2026 Gestion-Proyecto-Software-2026.
+
+### Créditos
+
+- **Sonidos** ([`game/client/assets/sonidos/`](game/client/assets/sonidos/)): de [Kenney](https://kenney.nl), con licencia [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) (dominio público). La fuente de cada fichero está en [`CREDITOS.md`](game/client/assets/sonidos/CREDITOS.md). Un sonido nuevo debe tener licencia libre y añadir allí su fila.

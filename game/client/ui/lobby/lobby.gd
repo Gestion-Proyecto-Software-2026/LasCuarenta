@@ -9,6 +9,8 @@ const ESCENA_HISTORIAL := "res://client/ui/historial/historial.tscn"
 const ESCENA_LOGIN := "res://client/ui/login/login.tscn"
 const ESCENA_ESPERA := "res://client/ui/espera/espera.tscn"
 const ESCENA_RANKING := "res://client/ui/ranking/ranking.tscn"
+## Ajustes del cliente, como el sonido (PBI-21).
+const PanelAjustes := preload("res://client/ui/ajustes/panel_ajustes.gd")
 
 @onready var etiqueta_usuario: Label = %EtiquetaUsuario
 @onready var etiqueta_error: Label = %EtiquetaError
@@ -18,10 +20,13 @@ const ESCENA_RANKING := "res://client/ui/ranking/ranking.tscn"
 @onready var boton_actualizar: Button = %BotonActualizar
 @onready var boton_cerrar_sesion: Button = %BotonCerrarSesion
 @onready var boton_ranking: Button = %BotonRanking
+@onready var boton_ajustes: Button = %BotonAjustes
 @onready var lista_salas: VBoxContainer = %ListaSalas
 
 ## Por defecto el autoload; los tests de GUT lo sustituyen por un doble.
 var api = ClienteApi
+## Se crea la primera vez que se pulsa "Ajustes" y luego se reutiliza.
+var panel_ajustes: AcceptDialog
 
 
 func _ready() -> void:
@@ -35,11 +40,21 @@ func _ready() -> void:
 	boton_actualizar.pressed.connect(_on_boton_actualizar_pressed)
 	boton_cerrar_sesion.pressed.connect(_on_boton_cerrar_sesion_pressed)
 	boton_ranking.pressed.connect(_on_boton_ranking_pressed)
+	boton_ajustes.pressed.connect(_on_boton_ajustes_pressed)
 	refrescar()
 
 
 func _on_boton_ranking_pressed() -> void:
 	get_tree().change_scene_to_file(ESCENA_RANKING)
+
+
+## Los ajustes no son otra pantalla: un panel encima del lobby.
+func _on_boton_ajustes_pressed() -> void:
+	if panel_ajustes == null:
+		panel_ajustes = PanelAjustes.new()
+		panel_ajustes.name = "PanelAjustes"
+		add_child(panel_ajustes)
+	panel_ajustes.popup_centered()
 
 
 func refrescar() -> void:

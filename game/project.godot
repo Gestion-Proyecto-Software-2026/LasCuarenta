@@ -24,6 +24,8 @@ FuncionesGlobales="*res://client/autoload/funciones_globales.gd"
 CanalRed="*res://shared/canal_red.gd"
 ClienteApi="*res://client/autoload/cliente_api.gd"
 ClienteRed="*res://client/autoload/cliente_red.gd"
+Ajustes="*res://client/autoload/ajustes.gd"
+Sonidos="*res://client/autoload/sonidos.gd"
 
 [editor_plugins]
 

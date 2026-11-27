@@ -12,12 +12,17 @@ extends Control
 ## uno y hace las pausas que hacía el prototipo unificado: la baza completa se
 ## queda un momento en la mesa antes de recogerla, y en el Mus se enseñan las
 ## cartas de todos al acabar cada mano.
+##
+## Los sonidos (PBI-21) van con lo que se ve: suenan al enseñar cada estado,
+## no al recibirlo, y cuáles tocan lo decide sonidos_mesa.gd.
 
 const ESCENA_LOBBY := "res://client/ui/lobby/lobby.tscn"
 const ESCENA_TAPETE := preload("res://client/ui/mesa/tapete_mesa.tscn")
 const Textos := preload("res://client/ui/mesa/textos_mesa.gd")
 const CuentaAtras := preload("res://client/ui/mesa/cuenta_atras.gd")
 const ChatMesa := preload("res://client/ui/mesa/chat_mesa.gd")
+const SonidosMesa := preload("res://client/ui/mesa/sonidos_mesa.gd")
+const PanelAjustes := preload("res://client/ui/ajustes/panel_ajustes.gd")
 const ANUNCIO_PAUSA := "Partida en pausa: denuncia en el chat"
 
 ## En el Mus, al acabar cada mano se enseñan las cartas este tiempo (por pausa_baza).
@@ -27,6 +32,8 @@ const TAMANO_BASE := Vector2i(1152, 648)
 
 ## Inyectable en tests (doble), igual que en el resto de pantallas.
 var red = ClienteRed
+## Igual: el autoload Sonidos (PBI-21) o un doble que apunta lo que suena.
+var sonidos = Sonidos
 ## Segundos que la baza completa se queda a la vista antes de recogerla. Con 0
 ## no hay pausas (tests).
 var pausa_baza := 2.0
@@ -38,6 +45,8 @@ var tapete: Control
 var cuenta_atras: Label
 ## Chat de la mesa (PBI-08), abajo a la izquierda.
 var chat: Control
+## Ajustes del cliente (PBI-21); se crea la primera vez que se abre.
+var panel_ajustes: AcceptDialog
 
 var _boton_lobby: Button
 ## Lo que queda por enseñar, en orden: { "estado": … } o { "resultado": … }.
@@ -51,6 +60,9 @@ var _juego := ""
 var _nombres: Array = []
 ## Hay una denuncia del chat pendiente: nadie juega hasta que se resuelva.
 var _en_pausa := false
+## Una denuncia ha pausado la partida: al reanudarse, si te toca, se vuelve a
+## avisar (en pausa no suena el turno, y el tuyo pudo llegar entonces).
+var _turno_por_avisar := false
 
 ## Cómo estaba la ventana antes de abrir la primera mesa, y cuántas hay abiertas
 ## (en los tests hay varias a la vez): se restaura al cerrar la última.
@@ -76,6 +88,7 @@ func _ready() -> void:
 	red.denuncia_actualizada.connect(_on_denuncia_actualizada)
 	# Al reconectarse en plena pausa, la denuncia ya ha llegado (ClienteRed la guarda).
 	_en_pausa = not red.denuncia.is_empty()
+	_turno_por_avisar = _en_pausa
 	# El primer estado suele llegar antes de entrar en esta escena (ClienteRed
 	# lo guarda): se pinta lo que ya haya.
 	if not red.ultimo_estado.is_empty():
@@ -122,6 +135,15 @@ func _crear_chat() -> void:
 	chat.red = red
 	add_child(chat)
 	chat.configurar(red.config.get("jugadores", []), _mi_asiento())
+	chat.ajustes_pulsado.connect(abrir_ajustes)
+
+
+func abrir_ajustes() -> void:
+	if panel_ajustes == null:
+		panel_ajustes = PanelAjustes.new()
+		panel_ajustes.name = "PanelAjustes"
+		add_child(panel_ajustes)
+	panel_ajustes.popup_centered()
 
 
 func _crear_boton_lobby() -> void:
@@ -173,6 +195,7 @@ func _on_denuncia_actualizada(denuncia: Dictionary) -> void:
 	_en_pausa = denuncia.get("estado") == "pendiente" and not _terminada
 	if not _en_pausa:
 		return
+	_turno_por_avisar = true
 	cuenta_atras.parar()
 	if not _procesando and not _estado_en_mesa.is_empty():
 		tapete.actualizar_vista(_estado_en_mesa, [])
@@ -213,12 +236,33 @@ func _mostrar_estado(estado: Dictionary) -> void:
 	var jugada: Dictionary = estado.get("ultima_jugada", {})
 	var es_nueva: bool = not anterior.is_empty() and not jugada.is_empty() \
 		and jugada.get("numero") != (anterior.get("ultima_jugada", {}) as Dictionary).get("numero")
+	var por_sonar := SonidosMesa.sonidos_entre(anterior, estado, _mi_asiento())
+	# La carta suena al caer en la mesa; lo demás (robo, turno), al final, con
+	# el estado nuevo ya a la vista (tras la pausa de la baza completa, si la hay).
+	if por_sonar.has(SonidosMesa.Sonido.CARTA):
+		por_sonar.erase(SonidosMesa.Sonido.CARTA)
+		sonidos.reproducir(SonidosMesa.Sonido.CARTA)
 	if es_nueva:
 		await _mostrar_jugada(jugada, anterior, estado)
 		if not is_inside_tree() or _terminada:
 			return
 	tapete.actualizar_vista(estado, _jugadas_de(estado))
 	_estado_en_mesa = estado
+	_sonar(por_sonar, estado)
+
+
+## Lo que suena al enseñar [param estado]. En pausa no suena el turno: no se
+## puede jugar hasta que se resuelva la denuncia.
+func _sonar(por_sonar: Array[String], estado: Dictionary) -> void:
+	var turno := SonidosMesa.Sonido.TURNO
+	if _en_pausa:
+		por_sonar.erase(turno)
+	elif _turno_por_avisar:
+		_turno_por_avisar = false
+		if SonidosMesa.me_toca(estado, _mi_asiento()) and not por_sonar.has(turno):
+			por_sonar.append(turno)
+	for nombre in por_sonar:
+		sonidos.reproducir(nombre)
 
 
 ## Lo que se ve entre el estado anterior y el nuevo: el anuncio de quien ha
