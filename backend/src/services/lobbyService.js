@@ -10,6 +10,10 @@ const JUEGOS_CREABLES = ["guinote", "mus", "tute"];
 // entre los dos stacks; si se cambia una, hay que recordar cambiar la otra.
 const CAPACIDADES_POR_JUEGO = { guinote: [2, 4], mus: [2, 4], tute: [2, 4] };
 const CAPACIDAD_POR_DEFECTO = 4;
+// Dificultades de la máquina (PBI-20); las mismas que JugadorMaquina.Dificultad
+// en el servidor de partida (game/server/ia/jugador_maquina.gd).
+const DIFICULTADES = ["facil", "normal", "dificil"];
+const DIFICULTAD_POR_DEFECTO = "normal";
 const NOMBRE_POR_DEFECTO = "Sala de Guiñote";
 const HASH_RE = /^[a-f0-9]{64}$/i;
 const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
@@ -59,7 +63,16 @@ async function listarSalas({ juego } = {}) {
   const { rows } = await pool.query(
     `SELECT s.id, s.juego, s.estado, s.capacidad, s.creador_id, s.nombre,
             (s.password_hash IS NOT NULL) AS tiene_contrasena,
-            COUNT(p.usuario_id)::int AS jugadores_actuales,
+            (COUNT(p.usuario_id)
+              + (SELECT COUNT(*) FROM sala_maquinas m WHERE m.sala_id = s.id))::int
+              AS jugadores_actuales,
+            COALESCE(
+              (SELECT json_agg(
+                        json_build_object('posicion', m.posicion, 'dificultad', m.dificultad)
+                        ORDER BY m.posicion)
+                 FROM sala_maquinas m WHERE m.sala_id = s.id),
+              '[]'
+            ) AS maquinas,
             COALESCE(
               json_agg(
                 json_build_object(
@@ -75,7 +88,8 @@ async function listarSalas({ juego } = {}) {
      LEFT JOIN usuarios u ON u.id = p.usuario_id
      WHERE s.estado = 'esperando' AND ($1::text IS NULL OR s.juego = $1)
      GROUP BY s.id
-     HAVING COUNT(p.usuario_id) < s.capacidad
+     HAVING COUNT(p.usuario_id)
+            + (SELECT COUNT(*) FROM sala_maquinas m WHERE m.sala_id = s.id) < s.capacidad
      ORDER BY s.fecha_creacion`,
     [juego ?? null],
   );
@@ -164,7 +178,18 @@ async function unirseSala(salaId, usuarioId, password_hash) {
       throw new ErrorHttp(409, "la sala está llena");
     }
 
-    const ocupadas = new Set(participantes.map((p) => p.posicion));
+    const { rows: maquinas } = await cliente.query(
+      "SELECT posicion FROM sala_maquinas WHERE sala_id = $1",
+      [salaId],
+    );
+    if (participantes.length + maquinas.length >= sala.capacidad) {
+      throw new ErrorHttp(409, "la sala está llena");
+    }
+
+    const ocupadas = new Set([
+      ...participantes.map((p) => p.posicion),
+      ...maquinas.map((m) => m.posicion),
+    ]);
     let posicion = 0;
     while (ocupadas.has(posicion)) posicion++;
 
@@ -180,7 +205,7 @@ async function unirseSala(salaId, usuarioId, password_hash) {
       estado: sala.estado,
       capacidad: sala.capacidad,
       creador_id: sala.creador_id,
-      jugadores_actuales: participantes.length + 1,
+      jugadores_actuales: participantes.length + maquinas.length + 1,
       servidor_direccion: process.env.GAME_SERVER_ADDRESS,
     };
   } catch (err) {
@@ -306,7 +331,146 @@ async function expulsarJugador(salaId, creadorId, usuarioId) {
   }
 }
 
+function validarSalaId(salaId) {
+  if (typeof salaId !== "string" || !UUID_RE.test(salaId)) {
+    throw new ErrorHttp(400, "id de sala no válido");
+  }
+}
+
+// Lo que se comprueba antes de tocar las máquinas de una sala: que exista, que
+// la pida su creador y que aún no haya empezado la partida. Devuelve la sala.
+async function salaDelCreador(cliente, salaId, creadorId) {
+  const { rows: salas } = await cliente.query(
+    "SELECT id, estado, capacidad, creador_id FROM salas WHERE id = $1 FOR UPDATE",
+    [salaId],
+  );
+  const sala = salas[0];
+  if (!sala) throw new ErrorHttp(404, "la sala no existe");
+  if (sala.creador_id !== creadorId) {
+    throw new ErrorHttp(
+      403,
+      "solo el creador de la sala puede cambiar las máquinas",
+    );
+  }
+  if (sala.estado !== "esperando") {
+    throw new ErrorHttp(409, "la partida ya ha empezado");
+  }
+  return sala;
+}
+
+// Devuelve cómo queda la sala: capacidad, plazas ocupadas (personas y máquinas)
+// y las máquinas, para que el cliente repinte la sala de espera sin otra consulta.
+async function estadoDeMaquinas(cliente, sala) {
+  const { rows: maquinas } = await cliente.query(
+    "SELECT posicion, dificultad FROM sala_maquinas WHERE sala_id = $1 ORDER BY posicion",
+    [sala.id],
+  );
+  const { rows: personas } = await cliente.query(
+    "SELECT COUNT(*)::int AS total FROM sala_participantes WHERE sala_id = $1",
+    [sala.id],
+  );
+  return {
+    id: sala.id,
+    capacidad: sala.capacidad,
+    jugadores_actuales: (personas[0] ? personas[0].total : 0) + maquinas.length,
+    maquinas,
+  };
+}
+
+// POST /salas/:id/maquinas (PBI-20): el creador sienta a una máquina en una plaza
+// libre de una sala que aún no ha empezado. Sin `posicion`, en la primera libre.
+async function anadirMaquina(salaId, creadorId, { dificultad, posicion } = {}) {
+  validarSalaId(salaId);
+  const nivel = dificultad === undefined ? DIFICULTAD_POR_DEFECTO : dificultad;
+  if (!DIFICULTADES.includes(nivel)) {
+    throw new ErrorHttp(
+      400,
+      `dificultad no válida, valores admitidos: ${DIFICULTADES.join(", ")}`,
+    );
+  }
+  if (posicion !== undefined && !Number.isInteger(posicion)) {
+    throw new ErrorHttp(400, "posicion no válida (entero)");
+  }
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    const sala = await salaDelCreador(cliente, salaId, creadorId);
+
+    const { rows: personas } = await cliente.query(
+      "SELECT posicion FROM sala_participantes WHERE sala_id = $1",
+      [salaId],
+    );
+    const { rows: maquinas } = await cliente.query(
+      "SELECT posicion FROM sala_maquinas WHERE sala_id = $1",
+      [salaId],
+    );
+    const ocupadas = new Set([
+      ...personas.map((p) => p.posicion),
+      ...maquinas.map((m) => m.posicion),
+    ]);
+    if (ocupadas.size >= sala.capacidad) {
+      throw new ErrorHttp(409, "la sala está llena");
+    }
+    let plaza = posicion;
+    if (plaza === undefined) {
+      plaza = 0;
+      while (ocupadas.has(plaza)) plaza++;
+    } else if (plaza < 0 || plaza >= sala.capacidad) {
+      throw new ErrorHttp(400, "posicion fuera de la sala");
+    } else if (ocupadas.has(plaza)) {
+      throw new ErrorHttp(409, "esa plaza ya está ocupada");
+    }
+
+    await cliente.query(
+      "INSERT INTO sala_maquinas (sala_id, posicion, dificultad) VALUES ($1, $2, $3)",
+      [salaId, plaza, nivel],
+    );
+    const estado = await estadoDeMaquinas(cliente, sala);
+    await cliente.query("COMMIT");
+    return estado;
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
+// DELETE /salas/:id/maquinas/:posicion (PBI-20): el creador quita la máquina de
+// una plaza, que queda libre.
+async function quitarMaquina(salaId, creadorId, posicion) {
+  validarSalaId(salaId);
+  if (!Number.isInteger(posicion) || posicion < 0 || posicion > 3) {
+    throw new ErrorHttp(400, "posicion no válida (entero de 0 a 3)");
+  }
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    const sala = await salaDelCreador(cliente, salaId, creadorId);
+
+    const { rowCount } = await cliente.query(
+      "DELETE FROM sala_maquinas WHERE sala_id = $1 AND posicion = $2",
+      [salaId, posicion],
+    );
+    if (rowCount === 0) {
+      throw new ErrorHttp(404, "no hay ninguna máquina en esa plaza");
+    }
+    const estado = await estadoDeMaquinas(cliente, sala);
+    await cliente.query("COMMIT");
+    return estado;
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
 module.exports = {
+  anadirMaquina,
+  quitarMaquina,
   listarSalas,
   crearSala,
   unirseSala,

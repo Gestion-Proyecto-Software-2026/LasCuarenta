@@ -4,6 +4,8 @@ jest.mock("../src/services/lobbyService", () => ({
   unirseSala: jest.fn(),
   salirSala: jest.fn(),
   expulsarJugador: jest.fn(),
+  anadirMaquina: jest.fn(),
+  quitarMaquina: jest.fn(),
 }));
 
 const request = require("supertest");
@@ -226,5 +228,91 @@ describe("POST /api/salas/:id/expulsar", () => {
     expect(res.body).toEqual({
       error: "solo el creador de la sala puede expulsar",
     });
+  });
+});
+
+describe("POST /api/salas/:id/maquinas (PBI-20)", () => {
+  it("401 sin token", async () => {
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/maquinas`)
+      .send({ dificultad: "normal" });
+
+    expect(res.status).toBe(401);
+    expect(lobbyService.anadirMaquina).not.toHaveBeenCalled();
+  });
+
+  it("201 y pasa sala, usuario autenticado y datos al servicio", async () => {
+    const sala = {
+      id: SALA_ID,
+      capacidad: 4,
+      jugadores_actuales: 2,
+      maquinas: [{ posicion: 1, dificultad: "dificil" }],
+    };
+    lobbyService.anadirMaquina.mockResolvedValue(sala);
+
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/maquinas`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ dificultad: "dificil", posicion: 1 });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual(sala);
+    expect(lobbyService.anadirMaquina).toHaveBeenCalledWith(SALA_ID, "u1", {
+      dificultad: "dificil",
+      posicion: 1,
+    });
+  });
+
+  it("403 si el servicio rechaza porque no es el creador", async () => {
+    lobbyService.anadirMaquina.mockRejectedValue(
+      new ErrorHttp(403, "solo el creador"),
+    );
+
+    const res = await request(app)
+      .post(`/api/salas/${SALA_ID}/maquinas`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: "solo el creador" });
+  });
+});
+
+describe("DELETE /api/salas/:id/maquinas/:posicion (PBI-20)", () => {
+  it("401 sin token", async () => {
+    const res = await request(app).delete(`/api/salas/${SALA_ID}/maquinas/1`);
+
+    expect(res.status).toBe(401);
+    expect(lobbyService.quitarMaquina).not.toHaveBeenCalled();
+  });
+
+  it("200 y pasa la posición como número", async () => {
+    const sala = {
+      id: SALA_ID,
+      capacidad: 4,
+      jugadores_actuales: 1,
+      maquinas: [],
+    };
+    lobbyService.quitarMaquina.mockResolvedValue(sala);
+
+    const res = await request(app)
+      .delete(`/api/salas/${SALA_ID}/maquinas/1`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(sala);
+    expect(lobbyService.quitarMaquina).toHaveBeenCalledWith(SALA_ID, "u1", 1);
+  });
+
+  it("404 si el servicio dice que no hay máquina", async () => {
+    lobbyService.quitarMaquina.mockRejectedValue(
+      new ErrorHttp(404, "no hay ninguna máquina en esa plaza"),
+    );
+
+    const res = await request(app)
+      .delete(`/api/salas/${SALA_ID}/maquinas/3`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
   });
 });

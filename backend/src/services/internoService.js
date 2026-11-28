@@ -45,8 +45,19 @@ async function obtenerSala(salaId) {
     [salaId],
   );
 
+  const { rows: maquinas } = await pool.query(
+    "SELECT posicion, dificultad FROM sala_maquinas WHERE sala_id = $1 ORDER BY posicion",
+    [salaId],
+  );
+
   return {
     ...sala,
+    // Plazas que juega el propio servidor de partida (PBI-20).
+    maquinas: maquinas.map((m) => ({
+      posicion: m.posicion,
+      equipo: equipoDe(m.posicion),
+      dificultad: m.dificultad,
+    })),
     participantes: participantes.map((p) => ({
       usuario_id: p.usuario_id,
       posicion: p.posicion,

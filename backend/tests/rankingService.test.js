@@ -37,6 +37,8 @@ describe("rankingService.obtenerRanking", () => {
     const [sql, params] = pool.query.mock.calls[0];
     expect(params).toEqual(["mus", 100]);
     expect(sql).toMatch(/FROM partida_jugadores/);
+    // Las partidas contra la máquina no cuentan para el ranking (PBI-20).
+    expect(sql).toMatch(/contra_maquina/);
     expect(sql).toMatch(/SUM\(pj\.puntos_obtenidos\)/);
     expect(sql).toMatch(/ORDER BY puntos_totales DESC/);
   });
