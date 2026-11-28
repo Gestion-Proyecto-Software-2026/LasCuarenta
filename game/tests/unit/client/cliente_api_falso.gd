@@ -15,6 +15,7 @@ var respuesta_crear: Dictionary = {"ok": true, "codigo": 201, "datos": {}}
 var respuesta_unirse: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
 var respuesta_salir: Dictionary = {"ok": true, "codigo": 204, "datos": null}
 var respuesta_expulsar: Dictionary = {"ok": true, "codigo": 200, "datos": {}}
+var respuesta_maquina: Dictionary = {"ok": true, "codigo": 201, "datos": {}}
 var respuesta_ranking: Dictionary = {"ok": true, "codigo": 200, "datos": []}
 
 ## Lista de [nombre_de_funcion, argumento] en el orden en que se llamaron.
@@ -84,6 +85,18 @@ func expulsar_jugador(sala_id: String, usuario_id: String) -> Dictionary:
 	llamadas.append(["expulsar_jugador", sala_id, usuario_id])
 	await _esperar()
 	return respuesta_expulsar
+
+
+func anadir_maquina(sala_id: String, dificultad: String = "normal", posicion: int = -1) -> Dictionary:
+	llamadas.append(["anadir_maquina", sala_id, dificultad, posicion])
+	await _esperar()
+	return respuesta_maquina
+
+
+func quitar_maquina(sala_id: String, posicion: int) -> Dictionary:
+	llamadas.append(["quitar_maquina", sala_id, posicion])
+	await _esperar()
+	return respuesta_maquina
 
 
 func obtener_ranking(juego: String = "guinote") -> Dictionary:

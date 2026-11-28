@@ -41,6 +41,12 @@ var terminada := false
 ## denuncia del chat; -1 si no está en pausa.
 var pausada_desde := -1
 
+## posicion -> JugadorMaquina: las plazas que juega el propio servidor (PBI-20).
+var maquinas: Dictionary = {}
+## Cuándo, según el reloj del servidor, puede jugar la siguiente máquina: así
+## tardan un poco en responder, como una persona.
+var maquina_lista_en := 0
+
 
 ## Si se le ha acabado el tiempo tantas veces seguidas que se le da por ido.
 func es_ausente(posicion: int) -> bool:
@@ -78,8 +84,13 @@ func reanudar(ahora: int) -> void:
 	pausada_desde = -1
 
 
+func es_maquina(posicion: int) -> bool:
+	return maquinas.has(posicion)
+
+
+## Todas las plazas están ocupadas: por una persona conectada o por una máquina.
 func todos_conectados() -> bool:
-	return peer_en_posicion.size() == capacidad
+	return peer_en_posicion.size() + maquinas.size() == capacidad
 
 
 func posicion_de_peer(peer_id: int) -> int:
@@ -94,6 +105,17 @@ func posicion_de_peer(peer_id: int) -> int:
 func vista_espera() -> Dictionary:
 	var lista: Array[Dictionary] = []
 	for posicion in range(capacidad):
+		if maquinas.has(posicion):
+			var maquina: JugadorMaquina = maquinas[posicion]
+			lista.append({
+				"usuario_id": "",
+				"nombre": nombre_en_posicion.get(posicion, ""),
+				"posicion": posicion,
+				"conectado": true,
+				"maquina": true,
+				"dificultad": JugadorMaquina.nombre_de(maquina.dificultad),
+			})
+			continue
 		if not usuario_en_posicion.has(posicion):
 			continue
 		lista.append({
@@ -101,6 +123,7 @@ func vista_espera() -> Dictionary:
 			"nombre": nombre_en_posicion.get(posicion, ""),
 			"posicion": posicion,
 			"conectado": peer_en_posicion.has(posicion),
+			"maquina": false,
 		})
 	return {"creador_id": creador_id, "capacidad": capacidad, "jugadores": lista}
 
@@ -111,6 +134,7 @@ func jugadores_con_nombre() -> Array[Dictionary]:
 	var lista := jugadores()
 	for jugador: Dictionary in lista:
 		jugador["nombre"] = nombre_en_posicion.get(jugador["posicion"], "")
+		jugador["maquina"] = maquinas.has(jugador["posicion"])
 	return lista
 
 

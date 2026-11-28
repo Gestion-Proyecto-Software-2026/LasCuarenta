@@ -202,3 +202,115 @@ func test_al_ser_expulsado_se_muestra_el_motivo_y_se_desconecta() -> void:
 	assert_eq(_etiqueta("EtiquetaError").text, "El creador de la sala te ha expulsado")
 	assert_true(red.llamadas.has(["desconectar"]))
 	assert_false(_boton("BotonEmpezar").visible)
+
+
+# --- Máquinas en la sala de espera (PBI-20) ---
+
+const SALA_CON_MAQUINA := {
+	"creador_id": "u1", "capacidad": 4,
+	"jugadores": [
+		{"usuario_id": "u1", "nombre": "Ana", "posicion": 0, "conectado": true, "maquina": false},
+		{"usuario_id": "", "nombre": "Máquina · Difícil", "posicion": 2, "conectado": true, "maquina": true, "dificultad": "dificil"},
+	],
+}
+
+
+func _sala_con_maquina(creador := "u1") -> void:
+	var sala := SALA_CON_MAQUINA.duplicate(true)
+	sala["creador_id"] = creador
+	red.sala = sala
+	red.sala_actualizada.emit(sala)
+
+
+func test_el_creador_ve_una_fila_por_cada_plaza_y_las_libres_dejan_anadir_maquina() -> void:
+	_sala_con_maquina()
+
+	assert_eq(_lista().get_child_count(), 4, "una fila por plaza, ocupada o libre")
+	assert_not_null(_lista().get_child(1).get_node_or_null("BotonAnadirMaquina"), "plaza 1 libre")
+	assert_not_null(_lista().get_child(3).get_node_or_null("BotonAnadirMaquina"), "plaza 3 libre")
+	assert_null(_lista().get_child(2).get_node_or_null("BotonAnadirMaquina"), "la plaza 2 ya la ocupa una máquina")
+
+
+func test_la_maquina_sale_con_su_nombre_y_el_creador_puede_quitarla() -> void:
+	_sala_con_maquina()
+
+	var fila: HBoxContainer = _lista().get_child(2)
+	assert_eq(fila.get_node("Nombre").text, "Máquina · Difícil")
+	assert_not_null(fila.get_node_or_null("BotonQuitarMaquina"))
+	var selector: OptionButton = fila.get_node("SelectorDificultad")
+	assert_eq(selector.selected, 2, "el selector muestra su dificultad actual")
+
+
+func test_quien_no_es_creador_ve_la_maquina_pero_no_puede_tocarla_ni_ve_plazas_libres() -> void:
+	api.usuario = {"id": "u2", "nombre_visible": "Luis"}
+	_sala_con_maquina("u1")
+
+	assert_eq(_lista().get_child_count(), 2, "solo las plazas ocupadas")
+	assert_null(_lista().find_child("BotonQuitarMaquina", true, false))
+	assert_null(_lista().find_child("BotonAnadirMaquina", true, false))
+
+
+func test_anadir_maquina_usa_la_dificultad_elegida_y_pide_releer_la_sala() -> void:
+	_sala_con_maquina()
+
+	var fila: HBoxContainer = _lista().get_child(1)
+	fila.get_node("SelectorDificultad").select(0)
+	fila.get_node("BotonAnadirMaquina").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_true(api.llamadas.has(["anadir_maquina", "sala-1", "facil", 1]))
+	assert_true(red.llamadas.has(["actualizar_sala"]))
+
+
+func test_por_defecto_la_maquina_es_normal() -> void:
+	_sala_con_maquina()
+
+	_lista().get_child(3).get_node("BotonAnadirMaquina").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_true(api.llamadas.has(["anadir_maquina", "sala-1", "normal", 3]))
+
+
+func test_quitar_maquina_llama_al_backend_y_pide_releer_la_sala() -> void:
+	_sala_con_maquina()
+
+	_lista().get_child(2).get_node("BotonQuitarMaquina").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_true(api.llamadas.has(["quitar_maquina", "sala-1", 2]))
+	assert_true(red.llamadas.has(["actualizar_sala"]))
+
+
+func test_cambiar_la_dificultad_quita_la_maquina_y_sienta_otra_en_la_misma_plaza() -> void:
+	_sala_con_maquina()
+
+	_lista().get_child(2).get_node("SelectorDificultad").item_selected.emit(0)
+	await wait_process_frames(3)
+
+	var quitar: int = api.llamadas.find(["quitar_maquina", "sala-1", 2])
+	var anadir: int = api.llamadas.find(["anadir_maquina", "sala-1", "facil", 2])
+	assert_true(quitar != -1 and anadir > quitar, "primero la quita y luego sienta la nueva")
+
+
+func test_si_el_backend_rechaza_la_maquina_se_muestra_el_error_y_se_vuelve_a_leer_la_sala() -> void:
+	api.respuesta_maquina = {"ok": false, "codigo": 409, "datos": {"error": "la sala está llena"}}
+	_sala_con_maquina()
+
+	_lista().get_child(1).get_node("BotonAnadirMaquina").pressed.emit()
+	await wait_process_frames(2)
+
+	assert_eq(_etiqueta("EtiquetaError").text, "la sala está llena")
+	assert_true(_etiqueta("EtiquetaError").visible)
+
+
+func test_con_maquinas_en_todas_las_plazas_libres_el_creador_puede_empezar() -> void:
+	var sala := SALA_CON_MAQUINA.duplicate(true)
+	sala["capacidad"] = 2
+	sala["jugadores"] = [
+		{"usuario_id": "u1", "nombre": "Ana", "posicion": 0, "conectado": true, "maquina": false},
+		{"usuario_id": "", "nombre": "Máquina · Normal", "posicion": 1, "conectado": true, "maquina": true, "dificultad": "normal"},
+	]
+	red.sala = sala
+	red.sala_actualizada.emit(sala)
+
+	assert_false(_boton("BotonEmpezar").disabled, "las dos plazas están ocupadas")
