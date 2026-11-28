@@ -71,4 +71,33 @@ router.post("/:id/expulsar", async (req, res, next) => {
   }
 });
 
+// POST /api/salas/:id/maquinas — PBI-20, solo el creador: sienta a una máquina.
+// { dificultad?: "facil" | "normal" | "dificil", posicion?: n }
+router.post("/:id/maquinas", async (req, res, next) => {
+  try {
+    const sala = await lobbyService.anadirMaquina(
+      req.params.id,
+      req.usuario.id,
+      req.body || {},
+    );
+    res.status(201).json(sala);
+  } catch (err) {
+    manejarError(err, res, next);
+  }
+});
+
+// DELETE /api/salas/:id/maquinas/:posicion — PBI-20, solo el creador: la quita.
+router.delete("/:id/maquinas/:posicion", async (req, res, next) => {
+  try {
+    const sala = await lobbyService.quitarMaquina(
+      req.params.id,
+      req.usuario.id,
+      Number(req.params.posicion),
+    );
+    res.status(200).json(sala);
+  } catch (err) {
+    manejarError(err, res, next);
+  }
+});
+
 module.exports = router;

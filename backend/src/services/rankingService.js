@@ -45,6 +45,7 @@ async function obtenerRanking({ juego, limite } = {}) {
      JOIN partidas p ON p.id = pj.partida_id
      JOIN usuarios u ON u.id = pj.usuario_id
      WHERE ($1::text IS NULL OR p.juego = $1)
+       AND (p.resultado_json->>'contra_maquina') IS DISTINCT FROM 'true'
      GROUP BY u.id, u.nombre_visible
      ORDER BY puntos_totales DESC, partidas_ganadas DESC, u.nombre_visible ASC
      LIMIT $2`,

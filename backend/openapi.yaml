@@ -392,6 +392,85 @@ paths:
         "409":
           description: La partida ya ha empezado
 
+  /salas/{id}/maquinas:
+    post:
+      tags: [Lobby]
+      summary: Sienta a una máquina en una plaza libre (solo el creador)
+      description: >
+        PBI-20. La máquina ocupa una plaza como si fuera un jugador y juega el
+        servidor de partida. Sin `posicion` se usa la primera plaza libre; sin
+        `dificultad`, `normal`. Solo el creador y solo con la sala `esperando`. Las
+        partidas con máquinas no cuentan para el ranking.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dificultad:
+                  type: string
+                  enum: [facil, normal, dificil]
+                posicion:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+      responses:
+        "201":
+          description: Máquina sentada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoDeMaquinas"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          description: Sin token o token inválido
+        "403":
+          description: Quien llama no es el creador de la sala
+        "404":
+          description: La sala no existe
+        "409":
+          description: La sala está llena, la plaza está ocupada o la partida ya ha empezado
+
+  /salas/{id}/maquinas/{posicion}:
+    delete:
+      tags: [Lobby]
+      summary: Quita la máquina de una plaza (solo el creador)
+      description: PBI-20. La plaza queda libre.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SalaId"
+        - name: posicion
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 3
+      responses:
+        "200":
+          description: Máquina quitada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoDeMaquinas"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+        "401":
+          description: Sin token o token inválido
+        "403":
+          description: Quien llama no es el creador de la sala
+        "404":
+          description: La sala no existe o en esa plaza no hay máquina
+        "409":
+          description: La partida ya ha empezado
+
   /usuarios/{id}/historial:
     get:
       tags: [Historial y ranking]
@@ -784,6 +863,28 @@ components:
             error: el usuario no existe
 
   schemas:
+    EstadoDeMaquinas:
+      type: object
+      description: Cómo queda la sala tras añadir o quitar una máquina (PBI-20).
+      properties:
+        id:
+          type: string
+          format: uuid
+        capacidad:
+          type: integer
+        jugadores_actuales:
+          type: integer
+          description: Plazas ocupadas, por personas y por máquinas.
+        maquinas:
+          type: array
+          items:
+            type: object
+            properties:
+              posicion:
+                type: integer
+              dificultad:
+                type: string
+                enum: [facil, normal, dificil]
     Error:
       type: object
       properties:

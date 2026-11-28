@@ -48,6 +48,10 @@ var reloj_fecha: Callable = func() -> String: return Time.get_datetime_string_fr
 ## y entonces se reintenta en el acto, sin esperar a ningún temporizador.
 var espera_entre_intentos_s := 2.0
 
+## Lo que tarda una máquina en jugar (PBI-20), en milisegundos: así se ve la jugada
+## y parece una persona. Se le añade hasta la mitad al azar. 0 = al momento (tests).
+var retardo_maquina_ms := 1200
+
 var _backend: Node
 var _jwt_secret: String
 var _motores: Dictionary
@@ -83,6 +87,7 @@ func _init(backend: Node, jwt_secret: String, motores: Dictionary,
 
 func _process(_delta: float) -> void:
 	comprobar_tiempos()
+	comprobar_maquinas()
 	comprobar_denuncias()
 
 
@@ -262,7 +267,41 @@ func _crear_sala(sala_id: String, datos: Dictionary) -> Variant:
 		sala.posicion_de_usuario[usuario_id] = int(posicion)
 		sala.usuario_en_posicion[int(posicion)] = usuario_id
 		sala.nombre_en_posicion[int(posicion)] = _nombre_de(participante)
+	if not _sentar_maquinas(sala, datos):
+		return "Las máquinas de la sala están mal formadas"
 	return sala
+
+
+## Deja las plazas de máquina como las tiene el backend (campo [code]maquinas[/code]
+## de la sala): [code][{ posicion, dificultad }][/code]. Una máquina que ya estaba
+## con la misma dificultad se conserva (recuerda las cartas que han salido).
+## Devuelve [code]false[/code], sin cambiar nada, si vienen mal formadas.
+func _sentar_maquinas(sala: SalaActiva, datos: Dictionary) -> bool:
+	var lista: Variant = datos.get("maquinas", [])
+	if not lista is Array:
+		return false
+	var nuevas := {}
+	for maquina: Variant in lista:
+		if not maquina is Dictionary:
+			return false
+		var posicion: Variant = maquina.get("posicion")
+		var nivel := JugadorMaquina.desde_nombre(str(maquina.get("dificultad", "normal")))
+		if not (posicion is float or posicion is int) or nivel == -1:
+			return false
+		var plaza := int(posicion)
+		if plaza < 0 or plaza >= sala.capacidad or sala.usuario_en_posicion.has(plaza) or nuevas.has(plaza):
+			return false
+		var anterior: JugadorMaquina = sala.maquinas.get(plaza)
+		if anterior != null and anterior.dificultad == nivel:
+			nuevas[plaza] = anterior
+		else:
+			nuevas[plaza] = FabricaDeMaquinas.para_juego(sala.juego, sala.capacidad, nivel as JugadorMaquina.Dificultad)
+	for plaza: int in sala.maquinas:
+		sala.nombre_en_posicion.erase(plaza)
+	sala.maquinas = nuevas
+	for plaza: int in nuevas:
+		sala.nombre_en_posicion[plaza] = "Máquina · %s" % JugadorMaquina.etiqueta_de((nuevas[plaza] as JugadorMaquina).dificultad)
+	return true
 
 
 ## Vuelve a pedir al backend los participantes de [param sala] (ver comentario
@@ -334,6 +373,7 @@ func _sustituir_participantes(sala: SalaActiva, datos: Dictionary, participantes
 	var creador: Variant = datos.get("creador_id")
 	if creador is String:
 		sala.creador_id = creador
+	_sentar_maquinas(sala, datos)
 
 
 ## Relee la sala del backend y manda la lista actualizada a los que esperan.
@@ -388,6 +428,7 @@ func _pedir_empezar(peer_id: int) -> void:
 func _empezar(sala: SalaActiva) -> void:
 	sala.estado = sala.motor.iniciar(sala.capacidad)
 	sala.fecha_inicio = reloj_fecha.call()
+	sala.maquina_lista_en = int(reloj.call()) + _retardo_de_maquina()
 	_actualizar_tiempos(sala, -1)
 	for posicion: int in sala.peer_en_posicion:
 		_enviar_inicio(sala, posicion)
@@ -435,6 +476,7 @@ func _jugar(peer_id: int, tipo: String, payload: Dictionary) -> void:
 ## cuenta a todos y la cierra si ha terminado.
 func _avanzar(sala: SalaActiva, quien: int, jugada: Dictionary, estado: EstadoPartida) -> void:
 	sala.estado = estado
+	sala.maquina_lista_en = int(reloj.call()) + _retardo_de_maquina()
 	sala.ultima_jugada = _jugada_publica(jugada, quien, sala.ultima_jugada.get("numero", 0) + 1)
 	_actualizar_tiempos(sala, quien)
 	for posicion: int in sala.peer_en_posicion:
@@ -470,6 +512,44 @@ func comprobar_tiempos() -> void:
 				break
 
 
+## Hace jugar a las máquinas a las que les toca, cuando han esperado su retardo
+## (PBI-20). Se llama en cada frame ([method _process]); los tests la llaman a mano.
+func comprobar_maquinas() -> void:
+	var ahora: int = reloj.call()
+	for sala_id: String in salas_activas.keys():
+		var sala: SalaActiva = salas_activas.get(sala_id)
+		if sala == null or sala.maquinas.is_empty() or not sala.empezada() \
+				or sala.en_pausa() or ahora < sala.maquina_lista_en:
+			continue
+		for posicion: int in sala.motor.jugadores_esperados(sala.estado):
+			if sala.es_maquina(posicion):
+				_jugar_maquina(sala, posicion)
+				break
+
+
+func _jugar_maquina(sala: SalaActiva, posicion: int) -> void:
+	var maquina: JugadorMaquina = sala.maquinas[posicion]
+	var jugada := maquina.decidir(sala.motor.vista_para_jugador(sala.estado, posicion),
+		sala.motor.jugadas_validas(sala.estado, posicion))
+	var resultado := sala.motor.aplicar_jugada(sala.estado, posicion, jugada)
+	if jugada.is_empty() or not resultado.ok:
+		# No debería pasar (la máquina elige entre las jugadas válidas); se juega la
+		# que juega el servidor por alguien que no contesta.
+		jugada = sala.motor.jugada_por_tiempo(sala.estado, posicion)
+		resultado = sala.motor.aplicar_jugada(sala.estado, posicion, jugada)
+	if jugada.is_empty() or not resultado.ok:
+		push_error("Sala %s: la máquina del asiento %d no pudo jugar" % [sala.sala_id, posicion])
+		sala.maquina_lista_en = int(reloj.call()) + 5000  # no reintentarlo en cada frame
+		return
+	_avanzar(sala, posicion, jugada, resultado.estado)
+
+
+func _retardo_de_maquina() -> int:
+	if retardo_maquina_ms <= 0:
+		return 0
+	return retardo_maquina_ms + randi_range(0, int(retardo_maquina_ms * 0.5))
+
+
 func _jugar_por_tiempo(sala: SalaActiva, posicion: int) -> void:
 	var jugada := sala.motor.jugada_por_tiempo(sala.estado, posicion)
 	var resultado := sala.motor.aplicar_jugada(sala.estado, posicion, jugada)
@@ -499,6 +579,8 @@ func _actualizar_tiempos(sala: SalaActiva, quien_ha_jugado: int) -> void:
 	var ahora: int = reloj.call()
 	var nuevos := {}
 	for posicion: int in sala.motor.jugadores_esperados(sala.estado):
+		if sala.es_maquina(posicion):
+			continue
 		if posicion != quien_ha_jugado and sala.limite_de.has(posicion):
 			nuevos[posicion] = sala.limite_de[posicion]
 		else:
@@ -531,6 +613,8 @@ func _terminar(sala: SalaActiva, resultado: Dictionary = {}, causa := "completa"
 		resultado = sala.motor.calcular_resultado(sala.estado)
 	# Antes de avisar a nadie: así los jugadores y el historial ven lo mismo.
 	resultado["causa"] = causa
+	if not sala.maquinas.is_empty():
+		resultado["contra_maquina"] = true  # no cuenta para el ranking (PBI-20)
 	sala.terminada = true
 	sala.limite_de.clear()
 	sala.pausada_desde = -1
@@ -551,9 +635,17 @@ func _terminar(sala: SalaActiva, resultado: Dictionary = {}, causa := "completa"
 ## éxito; cualquier otro 4xx es un error en los datos, que no se arregla
 ## repitiendo la misma petición.
 func _registrar_resultado(sala: SalaActiva, resultado: Dictionary) -> void:
+	# Las máquinas no son usuarios: no se guardan (PBI-20). Sin ninguna persona no
+	# hay a quién guardarle la partida.
+	var personas: Array[Dictionary] = []
+	for jugador: Dictionary in sala.jugadores():
+		if not str(jugador["usuario_id"]).is_empty():
+			personas.append(jugador)
+	if personas.is_empty():
+		return
 	var datos := {
 		"sala_id": sala.sala_id,
-		"jugadores": sala.jugadores(),
+		"jugadores": personas,
 		"resultado": resultado,
 		"fecha_fin": reloj_fecha.call(),
 	}

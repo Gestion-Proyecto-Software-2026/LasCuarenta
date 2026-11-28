@@ -634,3 +634,222 @@ describe("lobbyService.expulsarJugador", () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 });
+
+describe("lobbyService.anadirMaquina y quitarMaquina (PBI-20)", () => {
+  const salaEsperando = {
+    id: SALA_ID,
+    estado: "esperando",
+    capacidad: 4,
+    creador_id: USUARIO_ID,
+  };
+
+  // personas y maquinas son las posiciones que ya están ocupadas.
+  function prepararMaquinas({
+    sala = salaEsperando,
+    personas = [0],
+    maquinas = [],
+    borradas = 1,
+  } = {}) {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id"))
+          return { rows: sala ? [sala] : [] };
+        if (sql.includes("SELECT posicion FROM sala_participantes"))
+          return { rows: personas.map((posicion) => ({ posicion })) };
+        if (sql.includes("SELECT posicion FROM sala_maquinas"))
+          return { rows: maquinas.map((posicion) => ({ posicion })) };
+        if (sql.includes("SELECT posicion, dificultad FROM sala_maquinas"))
+          return {
+            rows: maquinas.map((posicion) => ({
+              posicion,
+              dificultad: "normal",
+            })),
+          };
+        if (sql.includes("COUNT(*)::int AS total"))
+          return { rows: [{ total: personas.length }] };
+        if (sql.includes("DELETE FROM sala_maquinas"))
+          return { rows: [], rowCount: borradas };
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+  }
+
+  function insercion() {
+    return cliente.query.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO sala_maquinas"),
+    );
+  }
+
+  it("sienta la máquina en la primera plaza libre con dificultad normal", async () => {
+    prepararMaquinas({ personas: [0, 1], maquinas: [] });
+
+    const resultado = await lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {});
+
+    expect(insercion()[1]).toEqual([SALA_ID, 2, "normal"]);
+    expect(resultado.id).toBe(SALA_ID);
+    expect(resultado.capacidad).toBe(4);
+    expect(sqlsEjecutados()).toContain("COMMIT");
+  });
+
+  it("respeta la dificultad y la plaza pedidas", async () => {
+    prepararMaquinas();
+
+    await lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {
+      dificultad: "dificil",
+      posicion: 2,
+    });
+
+    expect(insercion()[1]).toEqual([SALA_ID, 2, "dificil"]);
+  });
+
+  it("las máquinas también ocupan plaza al buscar la primera libre", async () => {
+    prepararMaquinas({ personas: [0], maquinas: [1, 2] });
+
+    await lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {});
+
+    expect(insercion()[1][1]).toBe(3);
+  });
+
+  it("409 si la sala está llena", async () => {
+    prepararMaquinas({ personas: [0, 1], maquinas: [2, 3] });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {}),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(insercion()).toBeUndefined();
+    expect(sqlsEjecutados()).toContain("ROLLBACK");
+  });
+
+  it("409 si la plaza pedida ya está ocupada", async () => {
+    prepararMaquinas({ personas: [0, 1] });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, { posicion: 1 }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("400 con una dificultad desconocida, sin tocar la base de datos", async () => {
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {
+        dificultad: "imposible",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  it("400 si la plaza no existe en una sala de 2", async () => {
+    prepararMaquinas({ sala: { ...salaEsperando, capacidad: 2 } });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, { posicion: 3 }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("403 si no es el creador", async () => {
+    prepararMaquinas({ sala: { ...salaEsperando, creador_id: OTRO_ID } });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {}),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("409 si la partida ya ha empezado", async () => {
+    prepararMaquinas({ sala: { ...salaEsperando, estado: "en_curso" } });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {}),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("404 si la sala no existe", async () => {
+    prepararMaquinas({ sala: null });
+
+    await expect(
+      lobbyService.anadirMaquina(SALA_ID, USUARIO_ID, {}),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("quita la máquina de una plaza", async () => {
+    prepararMaquinas({ personas: [0], maquinas: [] });
+
+    const resultado = await lobbyService.quitarMaquina(SALA_ID, USUARIO_ID, 2);
+
+    const borrado = cliente.query.mock.calls.find(([sql]) =>
+      sql.includes("DELETE FROM sala_maquinas"),
+    );
+    expect(borrado[1]).toEqual([SALA_ID, 2]);
+    expect(resultado.jugadores_actuales).toBe(1);
+    expect(sqlsEjecutados()).toContain("COMMIT");
+  });
+
+  it("404 si en esa plaza no hay máquina", async () => {
+    prepararMaquinas({ borradas: 0 });
+
+    await expect(
+      lobbyService.quitarMaquina(SALA_ID, USUARIO_ID, 2),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("403 al quitar si no es el creador", async () => {
+    prepararMaquinas({ sala: { ...salaEsperando, creador_id: OTRO_ID } });
+
+    await expect(
+      lobbyService.quitarMaquina(SALA_ID, USUARIO_ID, 2),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("400 si la posición no es un número de 0 a 3", async () => {
+    await expect(
+      lobbyService.quitarMaquina(SALA_ID, USUARIO_ID, 7),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      lobbyService.quitarMaquina(SALA_ID, USUARIO_ID, NaN),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("lobbyService.unirseSala con máquinas (PBI-20)", () => {
+  const sala = {
+    id: SALA_ID,
+    juego: "guinote",
+    estado: "esperando",
+    capacidad: 4,
+    creador_id: OTRO_ID,
+    password_hash: null,
+  };
+
+  function prepararUnion(personas, maquinas) {
+    cliente = {
+      query: jest.fn(async (sql) => {
+        if (sql.includes("FROM salas WHERE id")) return { rows: [sala] };
+        if (sql.includes("FROM sala_participantes")) return { rows: personas };
+        if (sql.includes("FROM sala_maquinas"))
+          return { rows: maquinas.map((posicion) => ({ posicion })) };
+        return { rows: [] };
+      }),
+      release: jest.fn(),
+    };
+    pool.connect.mockResolvedValue(cliente);
+  }
+
+  it("no sienta a nadie en una plaza que ocupa una máquina", async () => {
+    prepararUnion([{ usuario_id: OTRO_ID, posicion: 0 }], [1]);
+
+    await lobbyService.unirseSala(SALA_ID, USUARIO_ID);
+
+    const insercion = cliente.query.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO sala_participantes"),
+    );
+    expect(insercion[1]).toEqual([SALA_ID, USUARIO_ID, 2]);
+  });
+
+  it("409 si entre personas y máquinas llenan la sala", async () => {
+    prepararUnion([{ usuario_id: OTRO_ID, posicion: 0 }], [1, 2, 3]);
+
+    await expect(
+      lobbyService.unirseSala(SALA_ID, USUARIO_ID),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});

@@ -115,6 +115,21 @@ func expulsar_jugador(sala_id: String, usuario_id: String) -> Dictionary:
 		{"usuario_id": usuario_id})
 
 
+## Solo el creador de la sala, antes de empezar la partida (PBI-20): sienta a una
+## máquina en [param posicion] (o en la primera plaza libre si es negativa).
+## [param dificultad] es "facil", "normal" o "dificil".
+func anadir_maquina(sala_id: String, dificultad: String = "normal", posicion: int = -1) -> Dictionary:
+	var cuerpo := {"dificultad": dificultad}
+	if posicion >= 0:
+		cuerpo["posicion"] = posicion
+	return await _pedir(HTTPClient.METHOD_POST, "/salas/%s/maquinas" % sala_id.uri_encode(), cuerpo)
+
+
+## Solo el creador de la sala, antes de empezar la partida (PBI-20).
+func quitar_maquina(sala_id: String, posicion: int) -> Dictionary:
+	return await _pedir(HTTPClient.METHOD_DELETE, "/salas/%s/maquinas/%d" % [sala_id.uri_encode(), posicion])
+
+
 ## Clasificación pública (PBI-07). [param juego] vacío agrega todos los juegos.
 func obtener_ranking(juego: String = "guinote") -> Dictionary:
 	var ruta := "/ranking"

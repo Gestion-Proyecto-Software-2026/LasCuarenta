@@ -43,6 +43,12 @@ describe("internoService.obtenerSala", () => {
           { usuario_id: USUARIO_ID, posicion: 0, nombre_visible: "Ana" },
           { usuario_id: "otro", posicion: 1, nombre_visible: "Luis" },
         ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { posicion: 2, dificultad: "dificil" },
+          { posicion: 3, dificultad: "facil" },
+        ],
       });
 
     const sala = await internoService.obtenerSala(SALA_ID);
@@ -52,6 +58,10 @@ describe("internoService.obtenerSala", () => {
       juego: "guinote",
       estado: "esperando",
       capacidad: 4,
+      maquinas: [
+        { posicion: 2, equipo: 0, dificultad: "dificil" },
+        { posicion: 3, equipo: 1, dificultad: "facil" },
+      ],
       participantes: [
         {
           usuario_id: USUARIO_ID,
@@ -62,6 +72,21 @@ describe("internoService.obtenerSala", () => {
         { usuario_id: "otro", posicion: 1, equipo: 1, nombre_visible: "Luis" },
       ],
     });
+  });
+
+  it("una sala sin máquinas trae la lista vacía", async () => {
+    pool.query
+      .mockResolvedValueOnce({
+        rows: [
+          { id: SALA_ID, juego: "guinote", estado: "esperando", capacidad: 2 },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const sala = await internoService.obtenerSala(SALA_ID);
+
+    expect(sala.maquinas).toEqual([]);
   });
 
   it("404 si la sala no existe", async () => {
